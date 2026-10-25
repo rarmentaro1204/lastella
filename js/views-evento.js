@@ -183,7 +183,7 @@ function viewInvitati(E) {
     <button class="btn sm alt right" data-act="export-guests">⭳ Scheda cucina (Excel)</button></div>
     <table class="tb"><thead><tr><th>Invitato</th><th>Fascia</th><th>Tavolo</th><th>Esigenze alimentari</th><th>Note</th><th></th></tr></thead><tbody>
     ${list.map(g => { const s = seatOf(E, g.id); return `<tr class="click" data-act="guest-edit" data-id="${g.id}"><td><b>${esc(fullName(g))}</b></td><td>${esc(g.fascia)}</td>
-      <td>${s ? `<span class="pill">${esc(s.t.nome || 'Tavolo ' + s.t.num)} · posto ${s.i + 1}</span>` : '<span class="muted small">da assegnare</span>'}</td><td>${iconsHtml(g, { noFascia: 1 }) || '<span class="muted">—</span>'}</td><td class="small muted">${esc(g.note)}</td>
+      <td class="noprint" style="white-space:nowrap">${seatSelects(E, g, true)}</td><td>${iconsHtml(g, { noFascia: 1 }) || '<span class="muted">—</span>'}</td><td class="small muted">${esc(g.note)}</td>
       <td class="noprint"><button class="btn ghost sm" data-act="guest-del" data-id="${g.id}" title="Elimina">✕</button></td></tr>`; }).join('')}
     </tbody></table>${list.length ? '' : '<div class="empty">Nessun invitato corrisponde al filtro.</div>'}<div class="sp"></div>${legendHtml()}`
     : `<div class="empty"><h3>Nessun invitato</h3><p>Scarica il modello Excel, fallo compilare dagli sposi (foglio «Invitati» e foglio «Tavoli») e caricalo qui.</p>
@@ -194,7 +194,7 @@ ACTIONS.gfilter = el => { UI.guestF = el.dataset.v; rr(); };
 ACTIONS['guest-del'] = (el, ev) => { ev.stopPropagation(); const E = curEvent(); const g = E.guests.find(x => x.id === el.dataset.id); if (!confirm(`Eliminare ${fullName(g)}?`)) return; removeGuest(E, g.id); save(); rr(); };
 function removeGuest(E, id) { E.guests = E.guests.filter(g => g.id !== id); E.tables.forEach(t => t.seats = t.seats.map(s => (s === id ? null : s))); }
 ACTIONS['guest-new'] = () => guestModal(newGuest(), true);
-ACTIONS['guest-edit'] = el => guestModal(curEvent().guests.find(g => g.id === el.dataset.id), false);
+ACTIONS['guest-edit'] = (el, ev) => { if (ev && ev.target.closest('select,input,button,option')) return; guestModal(curEvent().guests.find(g => g.id === el.dataset.id), false); };
 function guestModal(g, isNew) {
   const chk = (name, arr, sel) => arr.map(a => `<label><input type="checkbox" name="${name}" value="${a.k}" ${sel.includes(a.k) ? 'checked' : ''}> <span class="ic ${name === 'all' ? 'all' : 'int'}">${a.icon}</span> ${esc(a.label)}</label>`).join('');
   openModal(`<h3>${isNew ? 'Nuovo invitato' : esc(fullName(g))}</h3><form id="gf" data-id="${g.id}" data-new="${isNew ? 1 : ''}">
@@ -284,10 +284,12 @@ function tableCard(E, t) {
   const geo = mapGeometry(t), occ = t.seats.filter(Boolean).length;
   const tooMany = t.forma === 'tondo' && t.seats.length > 11, few = t.forma === 'tondo' && t.seats.length < 8;
   const sp = t.seats.map(id => id && E.guests.find(g => g.id === id)).filter(Boolean).filter(hasSpecial).length;
-  const nm = t.nome || `Tavolo ${t.num}`;
+  const nm = t.nome || `Tavolo ${t.num}`, ti = E.tables.indexOf(t);
   return `<div class="tcard ${tooMany ? 'bad' : ''}"><div class="thead"><h4>${esc(nm)}</h4><span class="pill ${occ === t.seats.length ? 'ok' : 'warn'}">${occ}/${t.seats.length}</span>
-    <span class="pill">${t.forma === 'tondo' ? '◯ Tondo' : '▭ Rettangolare'}</span>${sp ? `<span class="pill bad" title="Ospiti con esigenze">⚠ ${sp}</span>` : ''}
-    <span class="right noprint"><button class="btn ghost sm" data-act="table-edit" data-t="${t.id}" title="Modifica">⚙</button></span></div>
+    <span class="pill printonly">${t.forma === 'tondo' ? '◯ Tondo' : '▭ Rettangolare'}</span>${sp ? `<span class="pill bad" title="Ospiti con esigenze">⚠ ${sp}</span>` : ''}
+    <span class="right noprint"><button class="btn ghost sm" data-act="table-edit" data-t="${t.id}" title="Rinomina o elimina il tavolo">⚙</button></span></div>
+    <div class="tctl noprint"><select data-b="tables.${ti}.forma" data-r title="Tipo di tavolo"><option value="tondo" ${t.forma === 'tondo' ? 'selected' : ''}>◯ Tondo</option><option value="rett" ${t.forma === 'rett' ? 'selected' : ''}>▭ Rettangolare</option></select>
+      <span class="stepper"><button type="button" data-act="t-seats" data-t="${t.id}" data-d="-1" title="Togli un posto">−</button><b>${t.seats.length} posti</b><button type="button" data-act="t-seats" data-t="${t.id}" data-d="1" title="Aggiungi un posto">＋</button></span></div>
     ${tooMany ? '<div class="alert bad small">Un tavolo tondo può ospitare al massimo 11 persone.</div>' : ''}${few ? '<div class="alert small">Sotto le 8 persone per un tavolo tondo (minimo previsto 8).</div>' : ''}
     <div class="map" style="width:${geo.w}px;height:${geo.h}px"><div class="tbl" style="left:${geo.table.x}px;top:${geo.table.y}px;width:${geo.table.w}px;height:${geo.table.h}px;border-radius:${geo.table.round ? '50%' : '8px'}"><div>${t.num}<small>${t.forma === 'tondo' ? 'tondo' : 'imperiale'}</small></div></div>
     ${t.seats.map((_, i) => seatHtml(E, t, i, geo.pos[i])).join('')}</div>
@@ -297,7 +299,7 @@ function viewTavoli(E) {
   const free = E.guests.filter(g => !seatOf(E, g.id)), totalSeats = E.tables.reduce((a, t) => a + t.seats.length, 0), seated = E.guests.length - free.length;
   const pool = `<div class="pool" data-pool><h4>Da assegnare <span class="badge">${free.length}</span></h4><div class="lst">${free.map(g => `<div class="gchip" draggable="true" data-g="${g.id}"><span class="nm">${esc(fullName(g))}</span>${iconsHtml(g)}</div>`).join('') || '<p class="muted small" style="padding:6px">Tutti gli invitati hanno un posto 🎉</p>'}</div></div>`;
   return `<div class="secthead"><div><h2>Tavoli e mappa della sala</h2><p>La disposizione scelta dagli sposi (dal foglio «Tavoli» dell'Excel). Trascina un invitato su un posto, oppure clicca un posto per assegnarlo. Passa il mouse su un posto per vedere tutte le particolarità.</p></div>
-    <div class="row right noprint"><button class="btn alt" data-act="table-add" data-f="tondo">＋ Tavolo tondo</button><button class="btn alt" data-act="table-add" data-f="rett">＋ Tavolo rettangolare</button><button class="btn alt" onclick="window.print()">🖨 Stampa</button></div></div>
+    <div class="row right noprint"><button class="btn alt" data-act="table-add" data-f="tondo">＋ Tavolo tondo</button><button class="btn alt" data-act="table-add" data-f="rett">＋ Tavolo rettangolare</button>${free.length ? '<button class="btn sand" data-act="auto-seat">Assegna i posti liberi automaticamente</button>' : ''}<button class="btn alt" onclick="window.print()">🖨 Stampa</button></div></div>
   <div class="tiles"><div class="tile"><b>${E.tables.length}</b><span>Tavoli</span></div><div class="tile"><b>${totalSeats}</b><span>Posti</span></div><div class="tile d"><b>${seated}</b><span>Assegnati</span></div><div class="tile ${free.length ? 'a' : ''}"><b>${free.length}</b><span>Da assegnare</span></div></div>
   <div class="toolbar noprint"><label class="row"><input type="checkbox" ${UI.tlist ? 'checked' : ''} data-act="tlist"> Mostra l'elenco sotto ogni tavolo</label><span class="right">${legendHtml()}</span></div>
   ${E.tables.length ? `<div class="tables-layout"><div class="tgrid">${E.tables.slice().sort((a, b) => a.num - b.num).map(t => tableCard(E, t)).join('')}</div><div class="noprint">${pool}</div></div>`
@@ -390,3 +392,42 @@ function viewConsegne(E) {
 }
 
 HOOKS.busman = el => { curEvent().consegne.bussola[+el.dataset.i].manual = true; };
+
+/* ---------------------------------------------------------------- posti, tipo tavolo, assegnazione dall'elenco invitati */
+ACTIONS['t-seats'] = el => {
+  const E = curEvent(), t = E.tables.find(x => x.id === el.dataset.t), d = +el.dataset.d;
+  if (d > 0) { if (t.seats.length >= 24) { toast('Massimo 24 posti per tavolo'); return; } t.seats.push(null); }
+  else {
+    if (t.seats.length <= 1) return;
+    const last = t.seats[t.seats.length - 1];
+    if (last) { const g = E.guests.find(x => x.id === last); if (!confirm(`Il posto ${t.seats.length} è occupato da ${g ? fullName(g) : 'un invitato'}: tornerà «da assegnare». Procedere?`)) return; }
+    t.seats.pop();
+  }
+  t.posti = t.seats.length; save(); rr();
+};
+const unseat = (E, gid) => { const p = seatOf(E, gid); if (p) p.t.seats[p.i] = null; };
+ACTIONS['auto-seat'] = () => {
+  const E = curEvent(), free = E.guests.filter(g => g.fascia !== 'Neonato' && !seatOf(E, g.id));
+  if (!free.length) { toast('Nessun invitato da assegnare'); return; }
+  let n = 0;
+  E.tables.slice().sort((a, b) => a.num - b.num).forEach(t => t.seats.forEach((s, i) => { if (!s && free.length) { t.seats[i] = free.shift().id; n++; } }));
+  save(); rr(); toast(n + ' invitati assegnati' + (free.length ? ` · ${free.length} senza posto: aggiungi posti o tavoli` : ''));
+};
+/* menu a tendina «Tavolo» / «Posto» nell'elenco invitati e nella scheda invitato */
+function seatSelects(E, g, compact) {
+  const cur = seatOf(E, g.id), tb = cur && cur.t;
+  const tOpts = E.tables.slice().sort((a, b) => a.num - b.num).map(t => { const occ = t.seats.filter(Boolean).length, full = occ >= t.seats.length && !(tb && tb.id === t.id); return `<option value="${t.id}" ${tb && tb.id === t.id ? 'selected' : ''} ${full ? 'disabled' : ''}>${esc(t.nome || 'Tavolo ' + t.num)} (${occ}/${t.seats.length})${full ? ' · completo' : ''}</option>`; }).join('');
+  const sOpts = tb ? tb.seats.map((id, i) => (!id || id === g.id) ? `<option value="${i}" ${id === g.id ? 'selected' : ''}>Posto ${i + 1}</option>` : '').join('') : '';
+  return `<select class="${compact ? 'asg' : ''}" data-asg-table="${g.id}" title="Assegna a un tavolo"><option value="">— da assegnare —</option>${tOpts}</select>${tb ? ` <select class="${compact ? 'asg' : ''}" data-asg-seat="${g.id}" title="Scegli il posto">${sOpts}</select>` : ''}`;
+}
+document.addEventListener('change', e => {
+  const t = e.target, E = curEvent(); if (!E) return;
+  if (t.dataset && t.dataset.asgTable !== undefined) {
+    const gid = t.dataset.asgTable;
+    if (!t.value) unseat(E, gid);
+    else { const tb = E.tables.find(x => x.id === t.value), cur = seatOf(E, gid); if (cur && cur.t.id === tb.id) return; const i = tb.seats.indexOf(null); if (i < 0) { toast('Tavolo completo: aggiungi un posto'); rr(); return; } placeGuest(E, gid, tb.id, i); }
+    save(); rr();
+  } else if (t.dataset && t.dataset.asgSeat !== undefined) {
+    const gid = t.dataset.asgSeat, cur = seatOf(E, gid); if (cur) { placeGuest(E, gid, cur.t.id, +t.value); save(); rr(); }
+  }
+});
