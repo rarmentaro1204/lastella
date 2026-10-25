@@ -34,7 +34,7 @@ function newEvent() {
     },
     allest: {}, addons: {}, special: [], recipes: {}, econ: { rettifiche: [], note: '' }, pagamenti: [],
     consegne: {
-      numeriOk: false, allergieOk: false, tavoliOk: false, disposizioneOk: false, seggiolini: '', attrezzatura: '', extratime: '', orientamento: '', sposiLato: 'Sposa a sinistra, sposo a destra',
+      bussola: [], numeriOk: false, allergieOk: false, tavoliOk: false, disposizioneOk: false, seggiolini: '', attrezzatura: '', extratime: '', orientamento: '', sposiLato: 'Sposa a sinistra, sposo a destra',
       fornitori: ['Allestitore floreale', 'Musicista aperitivo', 'Fotografo', 'Pasticceria', 'Wedding planner', 'Musicista openbar', 'Intrattenimento bimbi', 'Altro'].map(r => ({ ruolo: r, nome: '', tel: '', email: '' })),
     },
   };
