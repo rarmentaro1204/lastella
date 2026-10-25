@@ -297,7 +297,7 @@ function tableCard(E, t) {
 }
 function viewTavoli(E) {
   const free = E.guests.filter(g => !seatOf(E, g.id)), totalSeats = E.tables.reduce((a, t) => a + t.seats.length, 0), seated = E.guests.length - free.length;
-  const pool = `<div class="pool" data-pool><h4>Da assegnare <span class="badge">${free.length}</span></h4><div class="lst">${free.map(g => `<div class="gchip" draggable="true" data-g="${g.id}"><span class="nm">${esc(fullName(g))}</span>${iconsHtml(g)}</div>`).join('') || '<p class="muted small" style="padding:6px">Tutti gli invitati hanno un posto 🎉</p>'}</div></div>`;
+  const pool = `<div class="pool" data-pool><h4>Da assegnare <span class="badge">${free.length}</span></h4><div class="lst">${free.map(g => `<div class="gchip" draggable="true" data-g="${g.id}" style="flex-wrap:wrap"><span class="nm">${esc(fullName(g))}</span>${iconsHtml(g)}<span style="flex-basis:100%">${seatSelects(E, g, true)}</span></div>`).join('') || '<p class="muted small" style="padding:6px">Tutti gli invitati hanno un posto 🎉</p>'}</div></div>`;
   return `<div class="secthead"><div><h2>Tavoli e mappa della sala</h2><p>La disposizione scelta dagli sposi (dal foglio «Tavoli» dell'Excel). Trascina un invitato su un posto, oppure clicca un posto per assegnarlo. Passa il mouse su un posto per vedere tutte le particolarità.</p></div>
     <div class="row right noprint"><button class="btn alt" data-act="table-add" data-f="tondo">＋ Tavolo tondo</button><button class="btn alt" data-act="table-add" data-f="rett">＋ Tavolo rettangolare</button>${free.length ? '<button class="btn sand" data-act="auto-seat">Assegna i posti liberi automaticamente</button>' : ''}<button class="btn alt" onclick="window.print()">🖨 Stampa</button></div></div>
   <div class="tiles"><div class="tile"><b>${E.tables.length}</b><span>Tavoli</span></div><div class="tile"><b>${totalSeats}</b><span>Posti</span></div><div class="tile d"><b>${seated}</b><span>Assegnati</span></div><div class="tile ${free.length ? 'a' : ''}"><b>${free.length}</b><span>Da assegnare</span></div></div>
@@ -396,7 +396,7 @@ HOOKS.busman = el => { curEvent().consegne.bussola[+el.dataset.i].manual = true;
 /* ---------------------------------------------------------------- posti, tipo tavolo, assegnazione dall'elenco invitati */
 ACTIONS['t-seats'] = el => {
   const E = curEvent(), t = E.tables.find(x => x.id === el.dataset.t), d = +el.dataset.d;
-  if (d > 0) { if (t.seats.length >= 24) { toast('Massimo 24 posti per tavolo'); return; } t.seats.push(null); }
+  if (d > 0) { if (!canGrow(t)) { toast(`Massimo ${MAX_SEATS(t)} posti per un tavolo ${t.forma === 'tondo' ? 'tondo' : 'rettangolare'}`); return; } t.seats.push(null); }
   else {
     if (t.seats.length <= 1) return;
     const last = t.seats[t.seats.length - 1];
@@ -405,18 +405,22 @@ ACTIONS['t-seats'] = el => {
   }
   t.posti = t.seats.length; save(); rr();
 };
+const MAX_SEATS = t => (t.forma === 'tondo' ? 11 : 24);
+const canGrow = t => t.seats.length < MAX_SEATS(t);
+/* primo posto libero; se il tavolo è pieno ma sotto il massimo aggiunge un posto */
+function freeSeat(t) { let i = t.seats.indexOf(null); if (i < 0 && canGrow(t)) { t.seats.push(null); t.posti = t.seats.length; i = t.seats.length - 1; } return i; }
 const unseat = (E, gid) => { const p = seatOf(E, gid); if (p) p.t.seats[p.i] = null; };
 ACTIONS['auto-seat'] = () => {
   const E = curEvent(), free = E.guests.filter(g => g.fascia !== 'Neonato' && !seatOf(E, g.id));
   if (!free.length) { toast('Nessun invitato da assegnare'); return; }
   let n = 0;
-  E.tables.slice().sort((a, b) => a.num - b.num).forEach(t => t.seats.forEach((s, i) => { if (!s && free.length) { t.seats[i] = free.shift().id; n++; } }));
-  save(); rr(); toast(n + ' invitati assegnati' + (free.length ? ` · ${free.length} senza posto: aggiungi posti o tavoli` : ''));
+  E.tables.slice().sort((a, b) => a.num - b.num).forEach(t => { let i; while (free.length && (i = freeSeat(t)) >= 0) { t.seats[i] = free.shift().id; n++; } });
+  save(); rr(); toast(n + ' invitati assegnati' + (free.length ? ` · ${free.length} senza posto: tutti i tavoli sono al massimo, aggiungi un tavolo` : ''));
 };
 /* menu a tendina «Tavolo» / «Posto» nell'elenco invitati e nella scheda invitato */
 function seatSelects(E, g, compact) {
   const cur = seatOf(E, g.id), tb = cur && cur.t;
-  const tOpts = E.tables.slice().sort((a, b) => a.num - b.num).map(t => { const occ = t.seats.filter(Boolean).length, full = occ >= t.seats.length && !(tb && tb.id === t.id); return `<option value="${t.id}" ${tb && tb.id === t.id ? 'selected' : ''} ${full ? 'disabled' : ''}>${esc(t.nome || 'Tavolo ' + t.num)} (${occ}/${t.seats.length})${full ? ' · completo' : ''}</option>`; }).join('');
+  const tOpts = E.tables.slice().sort((a, b) => a.num - b.num).map(t => { const occ = t.seats.filter(Boolean).length, isCur = tb && tb.id === t.id, noFree = occ >= t.seats.length, full = noFree && !canGrow(t) && !isCur; return `<option value="${t.id}" ${isCur ? 'selected' : ''} ${full ? 'disabled' : ''}>${esc(t.nome || 'Tavolo ' + t.num)} (${occ}/${t.seats.length})${full ? ` · completo (max ${MAX_SEATS(t)})` : noFree && !isCur ? ' · +1 posto' : ''}</option>`; }).join('');
   const sOpts = tb ? tb.seats.map((id, i) => (!id || id === g.id) ? `<option value="${i}" ${id === g.id ? 'selected' : ''}>Posto ${i + 1}</option>` : '').join('') : '';
   return `<select class="${compact ? 'asg' : ''}" data-asg-table="${g.id}" title="Assegna a un tavolo"><option value="">— da assegnare —</option>${tOpts}</select>${tb ? ` <select class="${compact ? 'asg' : ''}" data-asg-seat="${g.id}" title="Scegli il posto">${sOpts}</select>` : ''}`;
 }
@@ -425,7 +429,7 @@ document.addEventListener('change', e => {
   if (t.dataset && t.dataset.asgTable !== undefined) {
     const gid = t.dataset.asgTable;
     if (!t.value) unseat(E, gid);
-    else { const tb = E.tables.find(x => x.id === t.value), cur = seatOf(E, gid); if (cur && cur.t.id === tb.id) return; const i = tb.seats.indexOf(null); if (i < 0) { toast('Tavolo completo: aggiungi un posto'); rr(); return; } placeGuest(E, gid, tb.id, i); }
+    else { const tb = E.tables.find(x => x.id === t.value), cur = seatOf(E, gid); if (cur && cur.t.id === tb.id) return; const i = freeSeat(tb); if (i < 0) { toast(`Tavolo completo: massimo ${MAX_SEATS(tb)} posti`); rr(); return; } placeGuest(E, gid, tb.id, i); }
     save(); rr();
   } else if (t.dataset && t.dataset.asgSeat !== undefined) {
     const gid = t.dataset.asgSeat, cur = seatOf(E, gid); if (cur) { placeGuest(E, gid, cur.t.id, +t.value); save(); rr(); }
