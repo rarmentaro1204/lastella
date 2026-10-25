@@ -3,64 +3,128 @@
    ===================================================================== */
 VIEWS.evento = E => ({ questionario: viewQuestionario, invitati: viewInvitati, tavoli: viewTavoli, consegne: viewConsegne }[ROUTE.sub] || viewQuestionario)(E);
 
-const F = (E, label, path, o = {}) => {
-  const v = pget(E, path) ?? '';
-  const cls = 'field' + (o.wide ? ' wide' : '') + (o.w2 ? ' w2' : '');
-  let ctl;
-  if (o.options) ctl = `<select data-b="${path}" ${o.r ? 'data-r' : ''}>${o.options.map(x => { const [val, lab] = Array.isArray(x) ? x : [x, x]; return `<option value="${esc(val)}" ${String(v) === String(val) ? 'selected' : ''}>${esc(lab)}</option>`; }).join('')}</select>`;
-  else if (o.area) ctl = `<textarea data-b="${path}" placeholder="${esc(o.ph || '')}">${esc(v)}</textarea>`;
-  else ctl = `<input type="${o.type || 'text'}" data-b="${path}" ${o.hook ? `data-hook="${o.hook}"` : ''} ${o.r ? 'data-r' : ''} value="${esc(v)}" placeholder="${esc(o.ph || '')}" ${o.min !== undefined ? `min="${o.min}"` : ''}>`;
-  return `<div class="${cls}"><label>${label}</label>${ctl}${o.hint ? `<span class="hint">${o.hint}</span>` : ''}</div>`;
+/* ---------------------------------------------------------------- dati obbligatori */
+const isEmail = v => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(v || '').trim());
+function missingRequired(E) {
+  const q = E.q, m = [];
+  if (!String(q.sposo1 || '').trim()) m.push('nome del committente 1');
+  if (!String(q.tel || '').replace(/\D/g, '').length || String(q.tel).replace(/\D/g, '').length < 6) m.push('telefono del committente 1');
+  if (!isEmail(q.email)) m.push('email del committente 1');
+  return m;
+}
+const miss = (E, f) => { const q = E.q; return f === 'sposo1' ? !String(q.sposo1 || '').trim() : f === 'tel' ? String(q.tel || '').replace(/\D/g, '').length < 6 : f === 'email' ? !isEmail(q.email) : false; };
+
+/* ---------------------------------------------------------------- calendario (date occupate / preventivi) */
+const MESI = ['Gennaio', 'Febbraio', 'Marzo', 'Aprile', 'Maggio', 'Giugno', 'Luglio', 'Agosto', 'Settembre', 'Ottobre', 'Novembre', 'Dicembre'];
+function monthGrid(y, mo, o = {}) {
+  const first = new Date(y, mo, 1), lead = (first.getDay() + 6) % 7, days = new Date(y, mo + 1, 0).getDate(), today = isoOf(new Date());
+  let h = '<div class="cal">' + ['Lun', 'Mar', 'Mer', 'Gio', 'Ven', 'Sab', 'Dom'].map(d => `<div class="cal-h">${d}</div>`).join('');
+  for (let i = 0; i < lead; i++) h += '<div class="cal-c off"></div>';
+  for (let d = 1; d <= days; d++) {
+    const iso = `${y}-${String(mo + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`, ds = dateStatus(iso, o.exceptId);
+    const cls = ['cal-c', ds ? (ds.st === 'quote' ? 'pend' : ds.st) : '', iso === o.selected ? 'sel' : '', iso === today ? 'today' : ''].join(' ');
+    const tip = ds ? (ds.st === 'busy' ? `Occupata: ${evName(ds.ev)} (${ds.ev.stato})` : `Preventivo non confermato: ${evName(ds.ev)}${ds.n > 1 ? ` (+${ds.n - 1})` : ''}`) : '';
+    h += o.pick ? `<button type="button" class="${cls}" ${ds && ds.st === 'busy' ? 'disabled' : `data-act="cal-pick" data-d="${iso}"`} title="${esc(tip)}">${d}${ds ? '<i></i>' : ''}</button>`
+      : `<div class="${cls}" title="${esc(tip)}">${d}${ds ? '<i></i>' : ''}</div>`;
+  }
+  return h + '</div>';
+}
+const calLegend = () => '<div class="legend" style="margin-top:10px"><span><i class="lg busy"></i> Occupata da evento confermato</span><span><i class="lg pend"></i> Preventivo non ancora confermato</span><span><i class="lg sel"></i> Data scelta</span></div>';
+function calModal(E, y, mo) {
+  UI.cal = { y, m: mo };
+  const prev = new Date(y, mo - 1, 1), next = new Date(y, mo + 1, 1);
+  openModal(`<div class="row"><button class="btn sm alt" data-act="cal-nav" data-y="${prev.getFullYear()}" data-m="${prev.getMonth()}">‹</button><h3 style="margin:0;flex:1;text-align:center">${MESI[mo]} ${y}</h3><button class="btn sm alt" data-act="cal-nav" data-y="${next.getFullYear()}" data-m="${next.getMonth()}">›</button></div>
+    <div class="sp"></div>${monthGrid(y, mo, { pick: true, selected: E.q.data, exceptId: E.id })}${calLegend()}
+    <div class="acts">${E.q.data ? '<button class="btn danger" data-act="cal-pick" data-d="">Togli la data</button>' : ''}<button class="btn alt" data-act="modal-close">Chiudi</button></div>`);
+}
+ACTIONS['cal-open'] = () => { const E = curEvent(), d = E.q.data ? new Date(E.q.data + 'T12:00:00') : new Date(); calModal(E, d.getFullYear(), d.getMonth()); };
+ACTIONS['cal-nav'] = el => calModal(curEvent(), +el.dataset.y, +el.dataset.m);
+ACTIONS['cal-pick'] = el => {
+  const E = curEvent(), d = el.dataset.d; E.q.data = d;
+  if (d) { const ds = dateStatus(d, E.id); if (ds && ds.st === 'quote') toast(`Attenzione: per questa data c'è già un preventivo (${evName(ds.ev)})`); autoDates(E); }
+  if (d && E.pagAuto) syncPagamenti(E);
+  save(); closeModal(); rr();
 };
 
-HOOKS.listino = (el, v) => {
-  const E = curEvent(), L = S.settings.listini.find(l => l.id === v) || CAT.listiniDefault[0];
-  E.q.locationNome = L.id === 'castella' ? 'La Castella' : E.q.locationNome;
-  E.q.spazi = L.spazi.map((s, i) => ({ ...s, orario: (E.q.spazi[i] || {}).orario || '' }));
+HOOKS.loc = (el, v) => { const E = curEvent(); if (v) applyLocation(E, v); else { E.q.location = ''; if (!E.q.listino) E.q.listino = S.settings.listini[0].id; if (!(E.q.spazi || []).length) E.q.spazi = CAT.locationsSeed[0].spazi.map(s => ({ momento: s.momento, a: '', b: '', orario: '' })); } if (E.pagAuto) syncPagamenti(E); rr(); };
+HOOKS.scadman = el => { curEvent().q.auto[el.dataset.f] = false; };
+ACTIONS['scad-auto'] = el => { const E = curEvent(); E.q.auto[el.dataset.f] = true; autoDates(E); save(); rr(); };
+HOOKS.stato = (el, v) => {
+  const E = curEvent();
+  if (CONFIRMED.includes(v)) {
+    if (!E.q.data) { E.stato = 'Preventivo'; toast('Per confermare l\'evento serve la data'); }
+    else { const ds = dateStatus(E.q.data, E.id); if (ds && ds.st === 'busy') { E.stato = 'Preventivo'; toast(`Data già occupata da «${evName(ds.ev)}»: non si può confermare`); } else if (missingRequired(E).length) { E.stato = 'Preventivo'; toast('Completa i dati del committente 1 per confermare'); } }
+  }
   rr();
 };
 
 /* ---------------------------------------------------------------- QUESTIONARIO */
+const F = (E, label, path, o = {}) => {
+  const v = pget(E, path) ?? '';
+  const cls = 'field' + (o.wide ? ' wide' : '') + (o.w2 ? ' w2' : '') + (o.bad ? ' bad' : '');
+  let ctl;
+  if (o.options) ctl = `<select data-b="${path}" ${o.hook ? `data-hook="${o.hook}"` : ''} ${o.r ? 'data-r' : ''}>${o.options.map(x => { const [val, lab] = Array.isArray(x) ? x : [x, x]; return `<option value="${esc(val)}" ${String(v) === String(val) ? 'selected' : ''}>${esc(lab)}</option>`; }).join('')}</select>`;
+  else if (o.area) ctl = `<textarea data-b="${path}" placeholder="${esc(o.ph || '')}">${esc(v)}</textarea>`;
+  else ctl = `<input type="${o.type || 'text'}" data-b="${path}" ${o.hook ? `data-hook="${o.hook}"` : ''} ${o.f ? `data-f="${o.f}"` : ''} ${o.r ? 'data-r' : ''} value="${esc(v)}" placeholder="${esc(o.ph || '')}" ${o.min !== undefined ? `min="${o.min}"` : ''} ${o.req ? 'required' : ''}>`;
+  return `<div class="${cls}"><label>${label}${o.req ? ' <b class="reqm">*</b>' : ''}</label>${ctl}${o.hint ? `<span class="hint">${o.hint}</span>` : ''}${o.bad ? '<span class="hint bad">Obbligatorio</span>' : ''}</div>`;
+};
+const custBox = (E, ...secs) => { const l = customizations(E).filter(c => secs.some(s => c.sec.startsWith(s))); return l.length ? `<div class="alert" style="margin-top:12px"><b>⚠ Customizzazioni rispetto alla location e al listino</b><ul style="margin:6px 0 0 18px;padding:0">${l.map(c => `<li class="small">${esc(c.text)}</li>`).join('')}</ul><div class="hint" style="margin-top:4px">La modifica degli spazi o del listino può far variare la quotazione.</div></div>` : ''; };
+const scadField = (E, label, f, hint) => `<div class="field"><label>${label} ${E.q.auto[f] ? '<span class="pill ok">auto</span>' : '<span class="pill warn">manuale</span> <a href="javascript:void 0" data-act="scad-auto" data-f="' + f + '" class="small">ripristina auto</a>'}</label><input type="date" data-b="q.${f}" data-hook="scadman" data-f="${f}" data-r value="${esc(E.q[f])}"><span class="hint">${hint}</span></div>`;
+
 function viewQuestionario(E) {
-  const q = E.q, g = giornoOf(E), cnt = guestCounts(E);
+  const q = E.q, g = giornoOf(E), cnt = guestCounts(E), mi = missingRequired(E), nl = id => (S.settings.listini.find(l => l.id === id) || {}).nome;
   const sync = E.guests.length && (cnt.Adulto !== +q.adulti || cnt.Bambino !== +q.bambini || cnt.Neonato !== +q.neonati || cnt.Staff !== (+q.staff || 0))
     ? `<div class="alert info noprint">L'elenco invitati contiene <b>${cnt.Adulto}</b> adulti, <b>${cnt.Bambino}</b> bambini, <b>${cnt.Neonato}</b> neonati, <b>${cnt.Staff}</b> staff. <button class="btn sm alt" data-act="sync-counts">Allinea i numeri qui sotto</button></div>` : '';
-  return `<div class="secthead"><div><h2>Questionario di conoscenza</h2><p>Le domande che il titolare pone a chi commissiona l'evento. Tutto si salva da solo.</p></div></div>
-  <div class="card"><h3>1 · Chi siamo e come ci avete conosciuto</h3><div class="fields">
-    ${F(E, 'Sposa / sposo (1)', 'q.sposo1')}${F(E, 'Sposa / sposo (2)', 'q.sposo2')}
-    ${F(E, 'Telefono', 'q.tel', { type: 'tel' })}${F(E, 'Email', 'q.email', { type: 'email' })}
-    ${F(E, 'Wedding planner', 'q.planner')}${F(E, 'Telefono wedding planner', 'q.plannerTel', { type: 'tel' })}
-    ${F(E, 'Come ci avete conosciuto', 'q.provenienza', { options: ['', 'Passaparola', 'Instagram / social', 'Sito web', 'Wedding planner', 'Location', 'Open day / fiera', 'Altro'] })}
-    ${F(E, 'Budget indicativo', 'q.budget', { ph: 'es. 20.000 €' })}</div></div>
+  const dateBtn = `<div class="field"><label>Data della cerimonia <b class="reqm">*</b></label><button type="button" class="datebtn" data-act="cal-open">${q.data ? '📅 ' + esc(fmtDate(q.data)) : '📅 Scegli la data…'}</button>
+    <span class="hint">${q.data ? `Tariffa <b>${g === 'sabato' ? 'sabato' : 'domenica–venerdì'}</b>. ` : ''}Il calendario mostra le date già occupate e quelle con un preventivo non confermato.</span></div>`;
+  const ds = q.data && dateStatus(q.data, E.id);
+  return `<div class="secthead"><div><h2>Questionario di conoscenza</h2><p>Le domande che il titolare pone a chi commissiona l'evento. Tutto si salva da solo. I campi con <b class="reqm">*</b> sono obbligatori per proseguire.</p></div></div>
+  ${mi.length ? `<div class="alert bad" style="margin-bottom:16px"><b>Per andare avanti compila:</b> ${mi.join(', ')}.</div>` : ''}
+  ${ds && ds.st === 'quote' ? `<div class="alert" style="margin-bottom:16px">Per il ${esc(fmtDate(q.data))} c'è già un preventivo non confermato: «${esc(evName(ds.ev))}».</div>` : ''}
+  <div class="card"><h3>1 · Committenti e contatti</h3>
+    <h4 style="margin:4px 0 10px">Committente 1 <span class="muted small" style="text-transform:none;letter-spacing:0">(obbligatorio)</span></h4><div class="fields">
+      ${F(E, 'Nome e cognome', 'q.sposo1', { req: 1, bad: miss(E, 'sposo1') })}${F(E, 'Telefono', 'q.tel', { type: 'tel', req: 1, bad: miss(E, 'tel') })}${F(E, 'Email', 'q.email', { type: 'email', req: 1, bad: miss(E, 'email') })}</div>
+    <h4 style="margin:18px 0 10px">Committente 2 <span class="muted small" style="text-transform:none;letter-spacing:0">(facoltativo)</span></h4><div class="fields">
+      ${F(E, 'Nome e cognome', 'q.sposo2')}${F(E, 'Telefono', 'q.tel2', { type: 'tel' })}${F(E, 'Email', 'q.email2', { type: 'email' })}</div>
+    <h4 style="margin:18px 0 10px">Altri riferimenti</h4><div class="fields">
+      ${F(E, 'Wedding planner', 'q.planner')}${F(E, 'Telefono wedding planner', 'q.plannerTel', { type: 'tel' })}
+      ${F(E, 'Come ci avete conosciuto', 'q.provenienza', { options: ['', 'Passaparola', 'Instagram / social', 'Sito web', 'Wedding planner', 'Location', 'Open day / fiera', 'Altro'] })}
+      ${F(E, 'Budget indicativo', 'q.budget', { ph: 'es. 20.000 €' })}</div></div>
   <div class="card"><h3>2 · Quando</h3><div class="fields">
     ${F(E, 'Tipo di evento', 'q.tipo', { options: ['Matrimonio', 'Anniversario', 'Compleanno', 'Evento aziendale', 'Battesimo / Comunione', 'Altro'] })}
-    ${F(E, 'Data dell\'evento', 'q.data', { type: 'date', r: 1, hint: q.data ? `${fmtDate(q.data).split(' ')[0]} → tariffa <b>${g === 'sabato' ? 'sabato' : 'domenica–venerdì'}</b>` : '' })}
+    ${dateBtn}
     ${F(E, 'Pranzo o cena', 'q.pasto', { options: ['Cena', 'Pranzo'] })}
     ${F(E, 'Tariffa giorno', 'q.giorno', { r: 1, options: [['auto', 'Automatica dalla data'], ['sabato', 'Sabato'], ['feriale', 'Domenica–venerdì']] })}
     ${F(E, 'Tipo di cerimonia', 'q.rito', { options: ['Civile', 'Religiosa', 'Rito simbolico', 'Nessuna cerimonia'] })}
     ${F(E, 'Note sulla cerimonia', 'q.ritoNote')}
-    ${F(E, 'Scadenza scelte allestimenti', 'q.scadenzaAllest', { type: 'date', hint: 'Da contratto: oltre questa data la quotazione può variare.' })}
-    ${F(E, 'Scadenza definizione menù', 'q.scadenzaMenu', { type: 'date', hint: 'Modificabile fino a 60 giorni lavorativi prima.' })}
-    ${F(E, 'Validità del preventivo fino al', 'q.validita', { type: 'date' })}</div></div>
+    ${F(E, 'Data firma del contratto', 'q.firma', { type: 'date', r: 1, hint: 'Serve per la prima caparra (entro 5 giorni dalla firma).' })}</div>
+    <div class="sp"></div><h4>Scadenze · calcolate in automatico dalla data della cerimonia</h4><div class="fields" style="margin-top:8px">
+    ${scadField(E, 'Scelte allestimenti entro', 'scadenzaAllest', 'Dopo questa data la quotazione può variare (31/01 dell\'anno, o 120 giorni prima).')}
+    ${scadField(E, 'Definizione menù entro', 'scadenzaMenu', '60 giorni lavorativi prima dell\'evento (art. 2.2 b).')}
+    ${scadField(E, 'Validità del preventivo fino al', 'validita', '18 giorni dalla creazione del preventivo.')}</div>
+    <p class="hint" style="margin-top:8px">Le altre scadenze (consulenza, assaggio, controfirma, file dei 15 giorni, rate di pagamento) sono nelle schede «Consegne 15 gg» ed «Economics».</p></div>
   <div class="card"><h3>3 · Dove</h3><div class="fields">
-    ${F(E, 'Location (listino)', 'q.listino', { options: S.settings.listini.map(l => [l.id, l.nome]), hook: 'listino' })}
-    ${F(E, 'Nome location', 'q.locationNome')}</div>
+    ${F(E, 'Location', 'q.location', { hook: 'loc', options: [['', 'Altra location (fuori elenco)'], ...S.settings.locations.map(l => [l.id, l.nome])] })}
+    ${q.location ? '' : F(E, 'Nome della location', 'q.locationNome')}
+    ${F(E, 'Listino applicato', 'q.listino', { r: 1, options: S.settings.listini.map(l => [l.id, l.nome]) })}</div>
     <div class="sp"></div><h4>Organizzazione degli spazi · Piano A / Piano B (meteo)</h4>
     <table class="tb"><thead><tr><th>Momento</th><th>Orario indicativo</th><th>Piano A</th><th>Piano B</th></tr></thead><tbody>
-    ${q.spazi.map((s, i) => `<tr><td>${esc(s.momento)}</td><td><input type="time" data-b="q.spazi.${i}.orario" value="${esc(s.orario)}"></td><td><input type="text" data-b="q.spazi.${i}.a" value="${esc(s.a)}"></td><td><input type="text" data-b="q.spazi.${i}.b" value="${esc(s.b)}"></td></tr>`).join('')}</tbody></table>
-    <p class="hint">La tabella oraria definitiva si compila 10 giorni prima dell'evento. La modifica dell'organizzazione degli spazi può far variare la quotazione.</p></div>
+    ${(q.spazi || []).map((s, i) => `<tr><td>${esc(s.momento)}</td><td><input type="time" data-b="q.spazi.${i}.orario" value="${esc(s.orario)}"></td><td><input type="text" data-b="q.spazi.${i}.a" data-r value="${esc(s.a)}"></td><td><input type="text" data-b="q.spazi.${i}.b" data-r value="${esc(s.b)}"></td></tr>`).join('') || '<tr><td colspan="4" class="muted">Scegli una location per precompilare gli spazi.</td></tr>'}</tbody></table>
+    <p class="hint">Precompilato dalla location scelta: puoi modificarlo in base alle richieste (comparirà un avviso). La tabella oraria definitiva si compila 10 giorni prima dell'evento.</p>${custBox(E, 'Location', 'Spazi', 'Tariffa')}</div>
   <div class="card"><h3>4 · Quanti siete</h3>${sync}<div class="fields">
-    ${F(E, 'Ospiti adulti (paganti per intero)', 'q.adulti', { type: 'number', min: 0, hint: 'Preventivo calcolato su minimo 100 adulti, minimo garantito 60.' })}
-    ${F(E, 'Bambini (3–10 anni)', 'q.bambini', { type: 'number', min: 0 })}
-    ${F(E, 'Neonati (0–2 anni)', 'q.neonati', { type: 'number', min: 0 })}
-    ${F(E, 'Staff / fornitori a tavola', 'q.staff', { type: 'number', min: 0 })}
-    ${F(E, 'Ospiti adulti garantiti da contratto', 'q.garantiti', { type: 'number', min: 0, hint: 'Se gli adulti effettivi sono meno, il compenso non scende (art. 2.3).' })}
+    ${F(E, 'Ospiti adulti (paganti per intero)', 'q.adulti', { type: 'number', min: 0, r: 1, hint: 'Prezzo secondo le regole del contratto: minimo 100 adulti, sotto i 100 −€ 60 per ospite mancante (minimo 60).' })}
+    ${F(E, 'Bambini (3–10 anni)', 'q.bambini', { type: 'number', min: 0, r: 1 })}
+    ${F(E, 'Neonati (0–2 anni)', 'q.neonati', { type: 'number', min: 0, r: 1 })}
+    ${F(E, 'Staff / fornitori a tavola', 'q.staff', { type: 'number', min: 0, r: 1 })}
     <div class="field"><label>Totale coperti</label><div class="counter" id="cop">${(+q.adulti || 0) + (+q.bambini || 0) + (+q.neonati || 0) + (+q.staff || 0)}</div><span class="hint">Tavoli tondi: da 8 a 11 persone, bambini e neonati compresi.</span></div></div></div>
   <div class="card"><h3>5 · Altro da sapere</h3><div class="fields">
     ${F(E, 'Altri fornitori (foto, fiori, musica…)', 'q.fornitori', { area: 1, w2: 1 })}
     ${F(E, 'Accessibilità / ospiti con esigenze motorie', 'q.accessibilita', { area: 1, w2: 1 })}
-    ${F(E, 'Note e desideri', 'q.note', { area: 1, wide: 1, ph: 'Tutto ciò che emerge nel colloquio…' })}</div></div>`;
+    ${F(E, 'Note e desideri', 'q.note', { area: 1, wide: 1, ph: 'Tutto ciò che emerge nel colloquio…' })}</div></div>
+  <div class="row noprint" style="margin-top:18px;justify-content:flex-end"><button class="btn" data-act="q-next">Salva e continua → Invitati</button></div>`;
 }
+ACTIONS['q-next'] = () => { const E = curEvent(), mi = missingRequired(E); if (mi.length) { toast('Mancano: ' + mi.join(', ')); rr(); return; } if (!E.q.data) toast('Ricorda di scegliere la data della cerimonia'); go(evUrl('evento', 'invitati')); };
+
 ACTIONS['sync-counts'] = () => { const E = curEvent(), c = guestCounts(E); E.q.adulti = c.Adulto; E.q.bambini = c.Bambino; E.q.neonati = c.Neonato; E.q.staff = c.Staff; save(); rr(); toast('Numeri allineati all\'elenco invitati'); };
 
 /* ---------------------------------------------------------------- icone esigenze */
@@ -280,8 +344,6 @@ document.addEventListener('drop', e => {
 document.addEventListener('dragend', () => { dragG = null; $$('.over').forEach(x => x.classList.remove('over')); });
 
 /* ---------------------------------------------------------------- CONSEGNE (file da inviare 15 giorni prima) */
-function workdaysBefore(iso, n) { const d = new Date(iso + 'T12:00:00'); let c = 0; while (c < n) { d.setDate(d.getDate() - 1); if (d.getDay() % 6) c++; } return d; }
-const daysFrom = d => Math.ceil((d - new Date()) / 864e5);
 function viewConsegne(E) {
   const q = E.q, k = E.consegne, c = guestCounts(E), n = E.tables.reduce((a, t) => a + t.seats.filter(Boolean).length, 0);
   const sc = [];
@@ -292,14 +354,9 @@ function viewConsegne(E) {
     sc.push(['15 giorni prima', d15, 'Invio del file «da inviare 15 giorni prima»: numeri definitivi, allergie, tavoli, seggiolini, attrezzatura fornitori, extra time (FAQ 2027)']);
     sc.push(['10 giorni lavorativi prima', workdaysBefore(q.data, 10), 'Pianta dei tavoli in scala, numero definitivo dei commensali, allergie e intolleranze · art. 2.2 c, d, f']);
   }
-  // Bussola 2027: tappe del percorso con i clienti (date proposte dall'anno dell'evento, modificabili)
-  if (q.data && !k.bussola.length) {
-    const Y = +q.data.slice(0, 4);
-    k.bussola = [['Uscita del menù', 'Il menù arriva via mail con le linee guida, il link per la consulenza e il «file da inviare 15 giorni prima»', `${Y - 1}-11-30`], ['Appuntamento di consulenza', 'Video call di 1 ora con Davide: definizione del menù e scelta degli allestimenti', `${Y}-01-30`], ['Assaggio del menù', 'Degustazione con Davide e il responsabile di sala; raccogliere allergie e intolleranze degli ospiti', `${Y}-03-31`], ['Controfirma del menù definitivo', 'Il menù aggiornato con scelte e personalizzazioni va confermato e controfirmato', `${Y}-04-15`], ['Invio del file compilato', 'Numero ospiti, allergie, tavoli e contatti fornitori: 15 giorni prima dell\'evento', (() => { const d = new Date(q.data + 'T12:00:00'); d.setDate(d.getDate() - 15); return d.toISOString().slice(0, 10); })()], ['Briefing finale', 'Breve telefonata di riepilogo: rivedere la timeline dell\'evento', ''] ].map(([t, d, due]) => ({ t, d, due, done: false })); save();
-  }
-  const bus = k.bussola.length ? `<div class="card" style="margin-bottom:16px"><div class="chead"><h3>Bussola · il percorso con i clienti</h3><span class="muted small">date proposte dal calendario 2027, modificabili</span></div>
+  const bus = k.bussola.length ? `<div class="card" style="margin-bottom:16px"><div class="chead"><h3>Bussola · il percorso con i clienti</h3><span class="muted small">date calcolate dalla data della cerimonia (calendario Bussola), modificabili</span></div>
     <div class="grid g3" style="margin-top:6px">${k.bussola.map((b, i) => { const g = b.due ? daysFrom(new Date(b.due + 'T23:59:59')) : null; return `<div class="avoce ${b.done ? 'done' : ''}"><div class="head"><h4 style="font-size:15px">${i + 1} · ${esc(b.t)}</h4>${b.done ? '<span class="pill ok">✓ fatto</span>' : g !== null ? `<span class="pill ${g < 0 ? 'bad' : g < 30 ? 'warn' : ''}">${g < 0 ? 'in ritardo' : 'tra ' + g + ' gg'}</span>` : ''}</div><div class="hint" style="margin-bottom:8px">${esc(b.d)}</div>
-      <div class="row" style="gap:8px"><input type="date" style="width:auto" data-b="consegne.bussola.${i}.due" data-r value="${esc(b.due)}"><label class="row" style="gap:6px"><input type="checkbox" data-b="consegne.bussola.${i}.done" data-r ${b.done ? 'checked' : ''}> completato</label></div></div>`; }).join('')}</div></div>` : '';
+      <div class="row" style="gap:8px"><input type="date" style="width:auto" data-b="consegne.bussola.${i}.due" data-hook="busman" data-i="${i}" data-r value="${esc(b.due)}"><label class="row" style="gap:6px"><input type="checkbox" data-b="consegne.bussola.${i}.done" data-r ${b.done ? 'checked' : ''}> completato</label></div></div>`; }).join('')}</div></div>` : '';
   const chk = (path, label, auto) => `<label class="row" style="gap:8px;align-items:flex-start;padding:6px 0"><input type="checkbox" data-b="${path}" data-r ${pget(E, path) ? 'checked' : ''}><span>${label}${auto ? `<div class="hint">${auto}</div>` : ''}</span></label>`;
   const alle = c.allergie + c.intolleranze;
   return `<div class="secthead"><div><h2>Consegne e scadenze</h2><p>Quello che il cliente deve far arrivare a La Stella (info@cateringlastella.com) entro 15 giorni dall'evento, più le altre scadenze contrattuali. Oltre quella data non si garantiscono disponibilità e tariffario dedicato.</p></div>
@@ -321,3 +378,5 @@ function viewConsegne(E) {
   <div class="card"><h3>Elenco fornitori</h3><table class="tb"><thead><tr><th>Ruolo</th><th>Nome del fornitore</th><th>Telefono</th><th>Email</th></tr></thead><tbody>
     ${k.fornitori.map((f, i) => `<tr><td>${i >= 7 ? `<input type="text" data-b="consegne.fornitori.${i}.ruolo" value="${esc(f.ruolo)}">` : esc(f.ruolo)}</td><td><input type="text" data-b="consegne.fornitori.${i}.nome" value="${esc(f.nome)}"></td><td><input type="tel" data-b="consegne.fornitori.${i}.tel" value="${esc(f.tel)}"></td><td><input type="email" data-b="consegne.fornitori.${i}.email" value="${esc(f.email)}"></td></tr>`).join('')}</tbody></table></div>`;
 }
+
+HOOKS.busman = el => { curEvent().consegne.bussola[+el.dataset.i].manual = true; };

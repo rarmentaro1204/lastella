@@ -261,3 +261,33 @@ table.tb { width: 100%; border-collapse: collapse; background: #fff; border: 1px
 .authlogo { text-align: center; margin-bottom: 26px; } .authlogo b { display: block; font-family: var(--serif); font-weight: 300; font-size: 30px; letter-spacing: .5em; padding-left: .5em; color: var(--navy); }
 .authlogo i { font-style: normal; font-size: 9px; letter-spacing: .55em; color: var(--sand); padding-left: .55em; display: block; margin-top: 6px; }
 .side .foot #sync-ind { font-size: 12px; color: #d9d2c8; }
+
+/* ---------- campi obbligatori, calendario, dashboard ---------- */
+.reqm { color: var(--bad); } .field.bad input, .field.bad select { border-color: var(--bad); background: #fff6f3; } .hint.bad { color: var(--bad); font-weight: 600; }
+.nav a.locked, .tabs a.locked { opacity: .5; }
+.datebtn { border: 1px solid var(--line); background: #fff; border-radius: 4px; padding: 8px 10px; text-align: left; width: 100%; cursor: pointer; font: inherit; } .datebtn:hover { border-color: var(--sand); }
+.cal { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+.cal-h { text-align: center; font-size: 10.5px; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); padding: 4px 0; }
+.cal-c { position: relative; aspect-ratio: 1.15; border: 1px solid var(--line); border-radius: 4px; background: #fff; display: grid; place-items: center; font: inherit; font-size: 14px; color: var(--ink); padding: 0; min-height: 36px; }
+.cal-c.off { border: 0; background: none; }
+button.cal-c { cursor: pointer; } button.cal-c:hover:not(:disabled) { border-color: var(--navy); background: var(--sand-3); }
+.cal-c.today { box-shadow: inset 0 0 0 1.5px var(--sand); }
+.cal-c.busy { background: #e8d9d3; color: #a58275; text-decoration: line-through; cursor: not-allowed; }
+.cal-c.pend { background: #fbe38a; border-color: #e0bc3c; font-weight: 700; }
+.cal-c.sel { background: var(--navy); color: #fff; border-color: var(--navy); }
+.cal-c i { position: absolute; bottom: 3px; width: 5px; height: 5px; border-radius: 50%; background: currentColor; opacity: .7; }
+.lg { display: inline-block; width: 14px; height: 14px; border-radius: 3px; vertical-align: -2px; margin-right: 4px; border: 1px solid var(--line); } .lg.busy { background: #e8d9d3; } .lg.pend { background: #fbe38a; border-color: #e0bc3c; } .lg.sel { background: var(--navy); }
+.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; margin-bottom: 20px; }
+.kpi { background: #fff; border: 1px solid var(--line); border-radius: var(--r); padding: 18px 20px; } .kpi.dark { background: var(--navy); color: #fff; border-color: var(--navy); }
+.kpi small { display: block; font-size: 10.5px; letter-spacing: .2em; text-transform: uppercase; color: var(--muted); } .kpi.dark small { color: var(--sand-2); }
+.kpi b { display: block; font-family: var(--serif); font-stretch: 75%; font-weight: 400; font-size: 38px; line-height: 1.1; margin: 6px 0 4px; } .kpi.dark b { color: #fff; }
+.kpi .sub { font-size: 12.5px; color: var(--muted); } .kpi.dark .sub { color: #cdc5ba; }
+.dash-grid { display: grid; grid-template-columns: 1.1fr 1fr; gap: 18px; align-items: start; } @media (max-width: 1100px) { .dash-grid { grid-template-columns: 1fr; } }
+.evrow { display: flex; gap: 14px; align-items: center; padding: 10px 0; border-bottom: 1px solid #eee8e0; cursor: pointer; } .evrow:hover { background: #faf6f0; }
+.evrow .dt { width: 52px; text-align: center; border: 1px solid var(--line); border-radius: 6px; padding: 4px 0; background: #fff; } .evrow .dt b { display: block; font-family: var(--serif); font-stretch: 75%; font-size: 24px; line-height: 1; color: var(--navy); } .evrow .dt span { font-size: 10px; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
+.cedit { border: 1px solid var(--line); border-radius: var(--r); background: #fff; padding: 12px 14px; margin-bottom: 10px; }
+.cedit > summary { cursor: pointer; font-weight: 700; list-style: none; display: flex; gap: 10px; align-items: center; } .cedit > summary::-webkit-details-marker { display: none; } .cedit > summary::before { content: '▸'; color: var(--sand); } .cedit[open] > summary::before { content: '▾'; }
+.cedit textarea { min-height: 60px; font-size: 13px; }
+.mini-row { display: flex; gap: 8px; align-items: center; margin: 4px 0; } .mini-row input { padding: 5px 8px; }
+
+.kpi .sub strong { font-family: var(--sans); font-stretch: 100%; font-size: inherit; font-weight: 700; color: inherit; display: inline; margin: 0; line-height: inherit; }

@@ -9,22 +9,35 @@ const norm = s => String(s ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLow
 const eur = n => (Number(n) || 0).toLocaleString('it-IT', { style: 'currency', currency: 'EUR' });
 const num = n => (Number(n) || 0).toLocaleString('it-IT');
 
+const clone = o => JSON.parse(JSON.stringify(o));
 function defaultSettings() {
-  return { iva: 10, bambinoPrezzo: 0, neonatoPrezzo: 0, supplementiSu: 'adulti', listini: JSON.parse(JSON.stringify(CAT.listiniDefault)), prezzi: {} };
+  const y = new Date().getFullYear();
+  return {
+    iva: 10, bambinoPrezzo: 80, neonatoPrezzo: 0, staffPrezzo: 0, supplementiSu: 'adulti',
+    listini: clone(CAT.listiniSeed), locations: clone(CAT.locationsSeed), addons: seedAddons(),
+    catalogs: { [y]: seedCatalog(), [y + 1]: seedCatalog() }, scadenziario: clone(CAT.scadenziarioSeed), prezzi: {},
+  };
+}
+function hydrateSettings(s) {
+  const o = Object.assign(defaultSettings(), s || {});
+  if (s && s.listini && !s.locations) {            // migrazione: gli spazi A/B stavano nei listini
+    o.locations = s.listini.filter(l => l.spazi).map(l => ({ id: l.id, nome: l.nome, listinoId: l.id, spazi: l.spazi }));
+    if (!o.locations.length) o.locations = clone(CAT.locationsSeed);
+  }
+  o.listini = (o.listini || []).map(l => { const { spazi, ...rest } = l; return rest; });
+  return o;
 }
 
 function newEvent() {
-  const L = CAT.listiniDefault[0];
   return {
     id: uid(), creato: new Date().toISOString(), stato: 'Preventivo',
     q: {
-      sposo1: '', sposo2: '', tel: '', email: '', planner: '', plannerTel: '',
-      tipo: 'Matrimonio', pasto: 'Cena', data: '', listino: L.id, locationNome: 'La Castella',
-      adulti: 100, bambini: 0, neonati: 0, staff: 0, garantiti: '', giorno: 'auto',
+      sposo1: '', tel: '', email: '', sposo2: '', tel2: '', email2: '', planner: '', plannerTel: '',
+      tipo: 'Matrimonio', pasto: 'Cena', data: '', firma: '', location: '', locationNome: '', listino: '',
+      adulti: 100, bambini: 0, neonati: 0, staff: 0, giorno: 'auto',
       rito: 'Civile', ritoNote: '', provenienza: '', budget: '', fornitori: '', accessibilita: '', note: '',
-      scadenzaAllest: '', scadenzaMenu: '', validita: '',
-      orari: { cerimonia: '', aperitivo: '', cena: '', torta: '', lounge: '', cocktail: '' },
-      spazi: L.spazi.map(s => ({ ...s, orario: '' })),
+      scadenzaAllest: '', scadenzaMenu: '', validita: '', auto: { scadenzaAllest: true, scadenzaMenu: true, validita: true },
+      spazi: [],
     },
     guests: [], tables: [],
     menu: {
@@ -32,9 +45,9 @@ function newEvent() {
       formula: '3a', pre: [], entree: [], primi: [], secondi: [], formaggi: false,
       bianco: '', rosso: '', extraVini: [], dessert: '', lounge: [], caffeAlt: '', noteMenu: '',
     },
-    allest: {}, addons: {}, special: [], recipes: {}, econ: { rettifiche: [], note: '' }, pagamenti: [],
+    allest: {}, addons: {}, special: [], recipes: {}, econ: { rettifiche: [], note: '' }, pagamenti: [], pagAuto: true,
     consegne: {
-      bussola: [], numeriOk: false, allergieOk: false, tavoliOk: false, disposizioneOk: false, seggiolini: '', attrezzatura: '', extratime: '', orientamento: '', sposiLato: 'Sposa a sinistra, sposo a destra',
+      bussola: [], numeriOk: false, allergieOk: false, tavoliOk: false, disposizioneOk: false, seggiolini: '', attrezzatura: '', extratime: '', orientamento: '', sposiLato: 'Committente 1 a sinistra, committente 2 a destra',
       fornitori: ['Allestitore floreale', 'Musicista aperitivo', 'Fotografo', 'Pasticceria', 'Wedding planner', 'Musicista openbar', 'Intrattenimento bimbi', 'Altro'].map(r => ({ ruolo: r, nome: '', tel: '', email: '' })),
     },
   };
@@ -42,7 +55,9 @@ function newEvent() {
 
 function hydrate(e) {
   const d = newEvent();
-  return Object.assign(d, e, { q: Object.assign(d.q, e.q), menu: Object.assign(d.menu, e.menu), econ: Object.assign({ rettifiche: [], note: '' }, e.econ), consegne: Object.assign(d.consegne, e.consegne) });
+  const o = Object.assign(d, e, { q: Object.assign(d.q, e.q), menu: Object.assign(d.menu, e.menu), econ: Object.assign({ rettifiche: [], note: '' }, e.econ), consegne: Object.assign(d.consegne, e.consegne) });
+  o.q.auto = Object.assign({ scadenzaAllest: true, scadenzaMenu: true, validita: true }, e.q && e.q.auto);
+  return o;
 }
 let S = load();
 function load() {
@@ -50,7 +65,7 @@ function load() {
     const raw = localStorage.getItem(KEY);
     if (raw) {
       const s = JSON.parse(raw);
-      s.settings = Object.assign(defaultSettings(), s.settings || {});
+      s.settings = hydrateSettings(s.settings);
       s.events = (s.events || []).map(hydrate);
       return s;
     }
@@ -194,9 +209,92 @@ function parseWorkbook(wb) {
 }
 
 /* =====================================================================
+   Date, scadenze e calendario
+   ===================================================================== */
+const CONFIRMED = ['Confermato', 'Definizione menù', 'Allestimenti', 'Pronto', 'Concluso'];
+const isConfirmed = E => CONFIRMED.includes(E.stato);
+const isoOf = d => { const z = new Date(d.getTime() - d.getTimezoneOffset() * 6e4); return z.toISOString().slice(0, 10); };
+const addDaysISO = (iso, n) => { const d = new Date(iso + 'T12:00:00'); d.setDate(d.getDate() + n); return isoOf(d); };
+function workdaysBefore(iso, n) { const d = new Date(iso + 'T12:00:00'); let c = 0; while (c < n) { d.setDate(d.getDate() - 1); if (d.getDay() % 6) c++; } return d; }
+const daysFrom = d => Math.ceil((d - new Date()) / 864e5);
+/* stato di una data rispetto agli altri eventi: busy = confermato, quote = solo preventivo */
+function dateStatus(iso, exceptId) {
+  const same = S.events.filter(e => e.id !== exceptId && e.q.data === iso && e.stato !== 'Annullato');
+  const conf = same.find(isConfirmed); if (conf) return { st: 'busy', ev: conf };
+  if (same.length) return { st: 'quote', ev: same[0], n: same.length };
+  return null;
+}
+function bussolaDefaults(E) {
+  const q = E.q, Y = +q.data.slice(0, 4);
+  return [['Uscita del menù', 'Il menù arriva via mail con le linee guida, il link per la consulenza e il «file da inviare 15 giorni prima»', `${Y - 1}-11-30`],
+    ['Appuntamento di consulenza', 'Video call di 1 ora: definizione del menù e scelta degli allestimenti', `${Y}-01-30`],
+    ['Assaggio del menù', 'Degustazione con il titolare e il responsabile di sala; raccogliere allergie e intolleranze degli ospiti', `${Y}-03-31`],
+    ['Controfirma del menù definitivo', 'Il menù aggiornato con scelte e personalizzazioni va confermato e controfirmato', `${Y}-04-15`],
+    ['Invio del file compilato', 'Numero ospiti, allergie, tavoli e contatti fornitori: 15 giorni prima dell\'evento', addDaysISO(q.data, -15)],
+    ['Briefing finale', 'Breve telefonata di riepilogo: rivedere la timeline dell\'evento', addDaysISO(q.data, -3)]];
+}
+/* ricalcola tutte le scadenze che dipendono dalla data dell'evento (se non modificate a mano) */
+function autoDates(E) {
+  const q = E.q; if (!q.data) return false;
+  const before = JSON.stringify([q.scadenzaAllest, q.scadenzaMenu, q.validita, E.consegne.bussola]);
+  const jan = `${q.data.slice(0, 4)}-01-31`, gap = (new Date(q.data) - new Date(jan)) / 864e5;
+  if (q.auto.scadenzaAllest) q.scadenzaAllest = gap >= 120 ? jan : addDaysISO(q.data, -120);
+  if (q.auto.scadenzaMenu) q.scadenzaMenu = isoOf(workdaysBefore(q.data, 60));
+  if (q.auto.validita) q.validita = addDaysISO(E.creato.slice(0, 10), 18);
+  const def = bussolaDefaults(E);
+  if (!E.consegne.bussola.length) E.consegne.bussola = def.map(([t, d, due]) => ({ t, d, due, done: false, manual: false }));
+  else E.consegne.bussola.forEach((b, i) => { if (!b.manual && !b.done && def[i]) b.due = def[i][2]; });
+  return before !== JSON.stringify([q.scadenzaAllest, q.scadenzaMenu, q.validita, E.consegne.bussola]);
+}
+/* scadenziario pagamenti dal contratto (parametri in Impostazioni) */
+function buildScadenziario(E, total) {
+  let cum = 0; const sign = E.q.firma || E.creato.slice(0, 10);
+  return S.settings.scadenziario.map(r => {
+    const v = Number(r.valore) || 0; let amt = r.tipo === 'fisso' ? v : r.tipo === 'pct' ? total * v / 100 : total * v / 100 - cum;
+    amt = Math.max(0, Math.round(amt * 100) / 100); cum += amt;
+    let due = ''; const n = Number(r.n) || 0;
+    if (r.quando === 'firma') due = addDaysISO(sign, n);
+    else if (E.q.data && r.quando === 'giorniPrima') due = addDaysISO(E.q.data, -n);
+    else if (E.q.data && r.quando === 'lavorativiPrima') due = isoOf(workdaysBefore(E.q.data, n));
+    return { desc: r.desc, due, importo: amt, paid: false };
+  });
+}
+function syncPagamenti(E) {
+  if (!E.pagAuto) return false;
+  const nw = buildScadenziario(E, computeQuote(E).imponibile);
+  nw.forEach((x, i) => { if (E.pagamenti[i] && E.pagamenti[i].paid) x.paid = true; });
+  if (JSON.stringify(nw) === JSON.stringify(E.pagamenti)) return false;
+  E.pagamenti = nw; return true;
+}
+
+/* =====================================================================
+   Cataloghi per anno, location, listini
+   ===================================================================== */
+function catalogByYear(y) {
+  const cs = (S.settings.catalogs = S.settings.catalogs || {});
+  if (!cs[y]) { const ys = Object.keys(cs).map(Number).filter(k => k <= y).sort((a, b) => b - a); cs[y] = ys.length ? clone(cs[ys[0]]) : seedCatalog(); }
+  return cs[y];
+}
+const catalogYear = E => (E.q.data ? +E.q.data.slice(0, 4) : new Date().getFullYear());
+const catalogFor = E => catalogByYear(catalogYear(E));
+function recipeIndexOf(C) {
+  const m = {}, put = r => { if (r) m[r.id] = r; };
+  C.isole.forEach(i => i.items.forEach(put));
+  [C.preEntree, C.entree, C.secondi, C.formaggi, C.dessert, C.lounge.dolci].forEach(a => (a || []).forEach(put));
+  C.primi.forEach(g => g.items.forEach(put)); put(C.torta);
+  return m;
+}
+const listinoOf = E => S.settings.listini.find(l => l.id === E.q.listino) || S.settings.listini[0];
+const locationOf = E => S.settings.locations.find(l => l.id === E.q.location);
+function applyLocation(E, id) {
+  const L = S.settings.locations.find(l => l.id === id); E.q.location = id; if (!L) return;
+  const old = Object.fromEntries((E.q.spazi || []).map(s => [s.momento, s.orario]));
+  E.q.locationNome = L.nome; E.q.listino = L.listinoId; E.q.spazi = L.spazi.map(s => ({ momento: s.momento, a: s.a, b: s.b, orario: old[s.momento] || '' }));
+}
+
+/* =====================================================================
    Preventivo
    ===================================================================== */
-const listinoOf = E => S.settings.listini.find(l => l.id === E.q.listino) || S.settings.listini[0];
 function giornoOf(E) {
   if (E.q.giorno && E.q.giorno !== 'auto') return E.q.giorno;
   if (!E.q.data) return 'sabato';
@@ -216,16 +314,14 @@ function addonQty(E, a, st) {
 }
 
 function computeQuote(E) {
-  const L = listinoOf(E), q = E.q, g = giornoOf(E);
-  const adReal = +q.adulti || 0, garantiti = +q.garantiti || 0, ch = +q.bambini || 0, ne = +q.neonati || 0;
-  const ad = Math.max(adReal, garantiti);   // da contratto: il compenso non scende sotto il minimo garantito
+  const L = listinoOf(E), q = E.q, g = giornoOf(E), C = catalogFor(E);
+  const ad = +q.adulti || 0, ch = +q.bambini || 0, ne = +q.neonati || 0, st = +q.staff || 0;
   const P = priceOf(`base:${L.id}:${g}`, L[g]);
   const cocktail = !!(E.addons.cocktail && E.addons.cocktail.on);
   const lines = [], warnings = [], infos = [];
   const add = (sec, label, qty, unit, tot, extra = {}) => lines.push(Object.assign({ sec, label, qty, unit, tot }, extra));
 
-  // 1. proposta Diamante
-  if (garantiti && adReal < garantiti) infos.push(`Adulti previsti (${adReal}) sotto gli ospiti garantiti da contratto (${garantiti}): il compenso resta calcolato su ${garantiti} (art. 2.3).`);
+  // 1. proposta Diamante — regole del contratto (Allegato A)
   const min = L.minAdulti;
   if (ad >= min) {
     add('Proposta Diamante', `Proposta Diamante · primi ${min} ospiti adulti (${g === 'sabato' ? 'sabato' : 'da domenica a venerdì'})`, min, P, min * P);
@@ -235,46 +331,41 @@ function computeQuote(E) {
       if (!cocktail) infos.push(`Con il servizio Cocktail bar, dal ${min + 1}° ospite in poi si risparmiano € ${L.scontoOltre} a persona (${eur((ad - min) * L.scontoOltre)}).`);
     }
   } else {
-    const eff = Math.max(ad, L.minGarantito);
-    add('Proposta Diamante', `Proposta Diamante · ${eff} ospiti adulti (${min} × ${eur(P)} meno € ${L.scontoMancante} per ogni ospite sotto i ${min})`, 1, min * P - (min - eff) * L.scontoMancante, min * P - (min - eff) * L.scontoMancante);
+    const eff = Math.max(ad, L.minGarantito), tot = min * P - (min - eff) * L.scontoMancante;
+    add('Proposta Diamante', `Proposta Diamante · ${eff} ospiti adulti (${min} × ${eur(P)} meno € ${L.scontoMancante} per ogni ospite sotto i ${min})`, 1, tot, tot);
     if (ad < L.minGarantito) warnings.push(`Adulti (${ad}) sotto il minimo garantito di ${L.minGarantito}: il preventivo è calcolato su ${L.minGarantito}.`);
   }
-  if (ch) {
-    const cp = +S.settings.bambinoPrezzo || 0;
-    add('Proposta Diamante', 'Bambini', ch, cp, ch * cp);
-    if (!cp) warnings.push('Prezzo bambini non impostato (Impostazioni): al momento i bambini sono a € 0.');
-  }
+  if (ch) { const cp = +S.settings.bambinoPrezzo || 0; add('Proposta Diamante', 'Bambini', ch, cp, ch * cp); if (!cp) warnings.push('Prezzo bambini non impostato (Impostazioni).'); }
   if (ne && S.settings.neonatoPrezzo) add('Proposta Diamante', 'Neonati', ne, +S.settings.neonatoPrezzo, ne * S.settings.neonatoPrezzo);
+  if (st) { const sp = +S.settings.staffPrezzo || 0; add('Proposta Diamante', 'Pasto staff / fornitori', st, sp, st * sp); if (!sp) warnings.push('Costo del pasto staff non impostato (Impostazioni): lo staff è a € 0.'); }
 
   // 2. supplementi allestimenti
   const persSup = S.settings.supplementiSu === 'tutti' ? ad + ch : ad;
-  CAT.allestimenti.forEach(gr => gr.voci.forEach(v => {
+  C.allestimenti.forEach(gr => gr.voci.forEach(v => {
     if (!v.opts) return;
     const sel = allestSelection(E, v); const o = v.opts.find(x => x.id === sel.opt);
     if (!o) return;
-    const sur = priceOf(`sur:${v.id}:${o.id}`, o.sur);
-    if (sur) add('Allestimenti', `${v.nome}: ${o.nome} (supplemento a persona)`, persSup, sur, persSup * sur);
-    if (o.fix) { const f = priceOf(`fix:${v.id}:${o.id}`, o.fix); add('Allestimenti', `${v.nome}: ${o.nome}`, 1, f, f); warnings.push('Tavolo in legno per il taglio torta: da aggiungere il trasporto in base alla location.'); }
+    if (+o.sur) add('Allestimenti', `${v.nome}: ${o.nome} (supplemento a persona)`, persSup, +o.sur, persSup * o.sur);
+    if (+o.fix) { add('Allestimenti', `${v.nome}: ${o.nome}`, 1, +o.fix, +o.fix); if (o.nota) warnings.push(`${v.nome}: ${o.nota}`); }
     if (o.quota) infos.push(`${v.nome}: «${o.nome}» è soggetto a quotazione dedicata.`);
   }));
 
   // 3. add-on
-  CAT.addons.forEach(a => {
-    const st = addonState(E, a); if (!st.on || a.link) return;
-    const v = addonVariant(a, st);
+  S.settings.addons.forEach(a => {
+    const sx = addonState(E, a); if (!sx.on || a.link) return;
+    const v = addonVariant(a, sx);
     const label = a.nome + (v ? ` · ${v.nome.split(' · ')[0]}` : '');
     if (a.quota || (!a.prezzo && !v)) {
-      const f = Number(st.prezzo) || 0;
+      const f = Number(sx.prezzo) || 0;
       add('Servizi aggiuntivi', label + ' (quotazione personalizzata)', 1, f, f);
       if (!f) warnings.push(`${a.nome}: importo da quotare (inseriscilo nella sezione Add-on).`);
       return;
     }
-    const base = v ? priceOf(`add:${a.id}:${v.id}`, v.prezzo) : priceOf(`add:${a.id}`, a.prezzo);
-    const unit = (st.prezzo !== undefined && st.prezzo !== '' && st.prezzo !== null) ? Number(st.prezzo) : base;
-    const qty = addonQty(E, a, st);
+    const base = v ? Number(v.prezzo) : Number(a.prezzo);
+    const unit = (sx.prezzo !== undefined && sx.prezzo !== '' && sx.prezzo !== null) ? Number(sx.prezzo) : base;
+    const qty = addonQty(E, a, sx);
     add('Servizi aggiuntivi', label + (a.perOra ? ' (ore)' : ''), qty, unit, qty * unit);
   });
-  // imperiale mostrato come add-on ma contato in allestimenti
   // 4. richieste speciali
   E.special.forEach(s => {
     if (s.stato === 'Rifiutato') return;
@@ -287,54 +378,80 @@ function computeQuote(E) {
 
   const imponibile = lines.reduce((s, l) => s + l.tot, 0);
   const iva = imponibile * (S.settings.iva / 100);
-  return { lines, imponibile, iva, totale: imponibile + iva, warnings, infos, giorno: g, P, listino: L, coperti: ad + ch + ne };
+  return { lines, imponibile, iva, totale: imponibile + iva, warnings, infos, giorno: g, P, listino: L, coperti: ad + ch + ne + st };
+}
+
+/* tutto ciò che si discosta da listino e catalogo: segnalato come «customizzazione» */
+function customizations(E) {
+  const out = [], add = (sec, text) => out.push({ sec, text }), q = E.q, m = E.menu, C = catalogFor(E), reg = CAT.aperitivoRegole;
+  const loc = locationOf(E), L = listinoOf(E), nl = id => (S.settings.listini.find(l => l.id === id) || {}).nome || id;
+  if (!q.location) add('Location', 'Location fuori elenco: tariffa e spazi da definire a mano.');
+  else if (!loc) add('Location', 'La location scelta non esiste più nelle impostazioni.');
+  else {
+    if (q.listino !== loc.listinoId) add('Location', `Listino diverso da quello della location: «${nl(loc.listinoId)}» → «${L.nome}».`);
+    (q.spazi || []).forEach(s => {
+      const o = loc.spazi.find(x => x.momento === s.momento);
+      if (!o) return add('Spazi', `${s.momento}: aggiunto rispetto alla location.`);
+      if ((o.a || '') !== (s.a || '')) add('Spazi', `${s.momento} · Piano A: «${o.a || '—'}» → «${s.a || '—'}».`);
+      if ((o.b || '') !== (s.b || '')) add('Spazi', `${s.momento} · Piano B: «${o.b || '—'}» → «${s.b || '—'}».`);
+    });
+    loc.spazi.forEach(o => { if (!(q.spazi || []).some(s => s.momento === o.momento)) add('Spazi', `${o.momento}: tolto rispetto alla location.`); });
+  }
+  if (q.giorno && q.giorno !== 'auto') add('Tariffa', 'Tariffa del giorno forzata a mano (non segue la data).');
+  if (m.show.length > reg.show) add('Menù · Aperitivo', `${m.show.length - reg.show} isola/e show-cooking oltre le ${reg.show} incluse: quotazione separata.`);
+  if (m.passaggio.length > reg.passaggio) add('Menù · Aperitivo', `${m.passaggio.length - reg.passaggio} isola/e a passaggio oltre le ${reg.passaggio} incluse: quotazione separata.`);
+  if (m.extraBuvette.length) add('Menù · Aperitivo', `Buvette personalizzata: ${m.extraBuvette.join(', ')} (quotazione separata).`);
+  if (m.esclusiva) add('Menù · Aperitivo', `Ricetta in esclusiva: ${(recipeIndexOf(C)[m.esclusiva] || {}).name || m.esclusiva} (quotazione separata).`);
+  if (m.extraVini.length) add('Menù · A tavola', `Etichette extra: ${m.extraVini.join(', ')} (quotazione separata).`);
+  if (m.formaggi) add('Menù · A tavola', 'Degustazione di formaggi: verificare la quotazione.');
+  E.special.forEach(s => { if (s.stato !== 'Rifiutato') add('Richieste speciali', `${s.sezione ? '[' + s.sezione + '] ' : ''}${s.tipo}: ${s.titolo || '(senza titolo)'} · ${s.stato}.`); });
+  C.allestimenti.forEach(gr => gr.voci.forEach(v => {
+    if (!v.opts) return; const sel = E.allest[v.id] || {}, o = v.opts.find(x => x.id === sel.opt); if (!o) return;
+    if (o.testo && sel.testo) add('Allestimento', `${v.nome}: ${sel.testo}.`);
+    if (o.quota) add('Allestimento', `${v.nome}: «${o.nome}» a quotazione dedicata.`);
+    if (+o.fix) add('Allestimento', `${v.nome}: «${o.nome}» con costo fisso${o.nota ? ' (' + o.nota + ')' : ''}.`);
+  }));
+  S.settings.addons.forEach(a => {
+    const sx = E.addons[a.id] || {}; if (!sx.on) return;
+    if (a.quota) add('Add-on', `${a.nome}: a quotazione personalizzata.`);
+    else if (sx.prezzo !== undefined && sx.prezzo !== '' && sx.prezzo !== null) add('Add-on', `${a.nome}: prezzo modificato a mano (${eur(sx.prezzo)}).`);
+  });
+  (E.econ.rettifiche || []).forEach(r => { if (Number(r.importo)) add('Rettifiche', `${r.desc || 'Rettifica'}: ${eur(r.importo)}.`); });
+  return out;
 }
 
 /* =====================================================================
    Ricette: elenco di ciò che è stato scelto per l'evento
    ===================================================================== */
-const RECIPE_INDEX = {};
-(function indexRecipes() {
-  const put = (r, sec) => { RECIPE_INDEX[r.id] = r; };
-  CAT.isole.forEach(i => i.items.forEach(r => put(r)));
-  [CAT.preEntree, CAT.entree, CAT.secondi, CAT.formaggi, CAT.dessert, CAT.lounge.dolci].forEach(a => a.forEach(r => put(r)));
-  CAT.primi.forEach(g => g.items.forEach(r => put(r)));
-})();
-
 const gen = (id, name, ing, asm, desc) => ({ id, name, desc: desc || '', ing, semi: [], asm: asm || ['Preparazione e controllo quantità', 'Allestimento servizio'], tags: [] });
 
 function selectedRecipes(E) {
-  const m = E.menu, out = []; const push = (sec, r) => r && out.push({ sec, r });
-  const isole = [...m.show, ...m.passaggio].map(id => CAT.isole.find(i => i.id === id)).filter(Boolean);
+  const C = catalogFor(E), IDX = recipeIndexOf(C), m = E.menu, out = []; const push = (sec, r) => r && out.push({ sec, r });
+  const isole = [...m.show, ...m.passaggio].map(id => C.isole.find(i => i.id === id)).filter(Boolean);
   isole.forEach(is => is.items.forEach(r => push(`Aperitivo · ${is.nome}`, r)));
-  if (m.esclusiva && RECIPE_INDEX[m.esclusiva]) { const r = RECIPE_INDEX[m.esclusiva]; push('Aperitivo · Singola ricetta in esclusiva', Object.assign({}, r, { id: 'ex-' + r.id, name: 'Esclusiva · ' + r.name })); }
-  push('Aperitivo · Buvette', gen('bv-bollicina', 'Bollicina · ' + CAT.buvette.bollicina, [CAT.buvette.bollicina, 'Flûte'], ['Raffreddare', 'Servizio']));
+  if (m.esclusiva && IDX[m.esclusiva]) { const r = IDX[m.esclusiva]; push('Aperitivo · Singola ricetta in esclusiva', Object.assign({}, r, { id: 'ex-' + r.id, name: 'Esclusiva · ' + r.name })); }
+  push('Aperitivo · Buvette', gen('bv-bollicina', 'Bollicina · ' + C.buvette.bollicina, [C.buvette.bollicina, 'Flûte'], ['Raffreddare', 'Servizio']));
   if (m.cocktail) push('Aperitivo · Buvette', gen('bv-cocktail', 'Cocktail d’aperitivo · ' + m.cocktail, ['Ingredienti: ' + m.cocktail, 'Ghiaccio', 'Garnish'], ['Mise en place bar', 'Preparazione al momento']));
-  push('Aperitivo · Buvette', gen('bv-analc', 'Analcolici' + (m.succo ? ' · succo ' + m.succo.toLowerCase() : ''), [m.succo ? 'Succo di frutta ' + m.succo.toLowerCase() : 'Succo di frutta', 'Coca Cola in vetro', 'Acqua naturale e frizzante Sparea Splendida'], ['Raffreddare', 'Servizio']));
-  m.extraBuvette.forEach((n, i) => push('Aperitivo · Buvette', gen('bv-x-' + norm(n).replace(/ /g, '-'), 'Extra buvette · ' + n, [n], ['Acquisto e raffreddamento', 'Servizio'])));
-  // menù bambini (FAQ 2027)
-  if ((+E.q.bambini || 0) > 0) CAT.menuBimbi.items.forEach(r => push('Menù bambini', r));
-  // a tavola
-  const pick = (ids, sec) => ids.forEach(id => push(sec, RECIPE_INDEX[id]));
+  push('Aperitivo · Buvette', gen('bv-analc', 'Analcolici' + (m.succo ? ' · succo ' + m.succo.toLowerCase() : ''), [m.succo ? 'Succo di frutta ' + m.succo.toLowerCase() : 'Succo di frutta', ...(C.buvette.fissi || []), ], ['Raffreddare', 'Servizio']));
+  m.extraBuvette.forEach(n => push('Aperitivo · Buvette', gen('bv-x-' + norm(n).replace(/ /g, '-'), 'Extra buvette · ' + n, [n], ['Acquisto e raffreddamento', 'Servizio'])));
+  if ((+E.q.bambini || 0) > 0) C.menuBimbi.items.forEach(r => push('Menù bambini', Object.assign({ kid: true }, r)));
+  const pick = (ids, sec) => ids.forEach(id => push(sec, IDX[id]));
   pick(m.pre, 'A tavola · Pre-entrée'); pick(m.entree, 'A tavola · Entrée'); pick(m.primi, 'A tavola · Primo piatto'); pick(m.secondi, 'A tavola · Secondo piatto');
-  if (m.formaggi) push('A tavola · Degustazione formaggi', RECIPE_INDEX['fo-degustazione']);
-  if (m.bianco || m.rosso || m.extraVini.length) push('Bevande a tavola', gen('bev-tavola', 'Vini e acqua a tavola', [m.bianco && 'Bianco: ' + m.bianco, m.rosso && 'Rosso: ' + m.rosso, ...m.extraVini.map(x => 'Extra: ' + x), 'Acqua naturale e frizzante Sparea Splendida'].filter(Boolean), ['Selezione e raffreddamento', 'Bicchieri e servizio']));
-  // dessert & lounge
-  if (m.dessert) { push('Dessert nuziale', RECIPE_INDEX[m.dessert]); push('Dessert nuziale', RECIPE_INDEX['de-torta']); push('Dessert nuziale', gen('de-brindisi', 'Brindisi · Spumante Brut e Moscato d’Asti', ['Spumante Brut', 'Moscato d’Asti', 'Flûte'], ['Raffreddare', 'Servizio al taglio torta'])); }
-  m.lounge.forEach(id => push('Lounge bar · Dolci e piccola pasticceria', RECIPE_INDEX[id]));
+  if (m.formaggi && C.formaggi[0]) push('A tavola · Degustazione formaggi', C.formaggi[0]);
+  if (m.bianco || m.rosso || m.extraVini.length) push('Bevande a tavola', gen('bev-tavola', 'Vini e acqua a tavola', [m.bianco && 'Bianco: ' + m.bianco, m.rosso && 'Rosso: ' + m.rosso, ...m.extraVini.map(x => 'Extra: ' + x), 'Acqua naturale e frizzante'].filter(Boolean), ['Selezione e raffreddamento', 'Bicchieri e servizio']));
+  if (m.dessert) { push('Dessert nuziale', IDX[m.dessert]); push('Dessert nuziale', C.torta); push('Dessert nuziale', gen('de-brindisi', 'Brindisi · ' + (C.brindisi || 'Spumante e Moscato'), ['Spumante Brut', 'Moscato d’Asti', 'Flûte'], ['Raffreddare', 'Servizio al taglio torta'])); }
+  m.lounge.forEach(id => push('Lounge bar · Dolci e piccola pasticceria', IDX[id]));
   if (m.lounge.length || m.dessert) {
     push('Lounge bar · Servizi', gen('lo-caffe', 'Specialty coffee · degustazione 3 tipologie', ['Caffè (3 tipologie)' + (m.caffeAlt ? ' + ' + m.caffeAlt : '')], ['Macinatura e attrezzature', 'Servizio guidato']));
     push('Lounge bar · Servizi', gen('lo-amari', 'Amari di erbe, fiori e radici', ['Selezione amari di produzione artigianale'], ['Selezione e servizio']));
     push('Lounge bar · Servizi', gen('lo-vermouth', 'Vermouth corner', ['Vermouth bianco', 'Vermouth rosso'], ['Selezione e servizio']));
   }
-  // add-on
-  CAT.addons.forEach(a => {
-    const st = addonState(E, a); if (!st.on) return;
-    const v = addonVariant(a, st);
+  S.settings.addons.forEach(a => {
+    const sx = addonState(E, a); if (!sx.on) return;
+    const v = addonVariant(a, sx);
     const items = (v && v.items) || a.ricetta; if (!items) return;
     push('Add-on', gen('ad-' + a.id, a.nome + (v ? ' · ' + v.nome.split(' · ')[0] : ''), items.slice(), ['Preparazione', 'Allestimento corner / servizio']));
   });
-  // richieste speciali
   E.special.forEach(s => { if (['piatto', 'isola'].includes(s.kind) && s.stato !== 'Rifiutato') push('Richieste speciali', gen('sp-' + s.id, s.titolo || 'Richiesta speciale', [], ['Definire con lo chef'], s.descr)); });
   return out;
 }

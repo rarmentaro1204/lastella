@@ -3,14 +3,16 @@
    ===================================================================== */
 
 /* ---------------------------------------------------------------- riepilogo scelte */
-const rname = id => (RECIPE_INDEX[id] || {}).name || id;
+let RIDX = {};
+const rname = id => (RIDX[id] || {}).name || id;
 function summaryBlocks(E) {
+  const C = catalogFor(E); RIDX = recipeIndexOf(C);
   const m = E.menu, f = CAT.formule.find(x => x.id === m.formula) || CAT.formule[0], out = [];
-  const isl = ids => ids.map(id => CAT.isole.find(i => i.id === id)).filter(Boolean).map(i => `${i.nome} (${i.items.length})`);
+  const isl = ids => ids.map(id => C.isole.find(i => i.id === id)).filter(Boolean).map(i => `${i.nome} (${i.items.length})`);
   const ap = [];
   if (m.show.length) ap.push(['Show-cooking', isl(m.show).join(' · ')]);
   if (m.passaggio.length) ap.push(['A passaggio', isl(m.passaggio).join(' · ')]);
-  ap.push(['Buvette', [CAT.buvette.bollicina.split(',')[0], m.cocktail, m.succo && 'succo ' + m.succo.toLowerCase(), 'acqua', 'Coca Cola in vetro'].filter(Boolean).join(' · ')]);
+  ap.push(['Buvette', [C.buvette.bollicina.split(',')[0], m.cocktail, m.succo && 'succo ' + m.succo.toLowerCase(), 'acqua', 'Coca Cola in vetro'].filter(Boolean).join(' · ')]);
   if (m.extraBuvette.length) ap.push(['Extra buvette (quotazione separata)', m.extraBuvette.join(' · ')]);
   if (m.esclusiva) ap.push(['Ricetta in esclusiva (quotazione separata)', rname(m.esclusiva)]);
   out.push(['Aperitivo', ap]);
@@ -26,9 +28,9 @@ function summaryBlocks(E) {
   if (m.caffeAlt) ds.push(['Caffè alternativo', m.caffeAlt]);
   out.push(['Dessert e lounge', ds]);
   const al = [];
-  CAT.allestimenti.forEach(g => g.voci.forEach(v => { if (!v.opts) return; const st = E.allest[v.id] || {}, o = v.opts.find(x => x.id === st.opt); if (o) al.push([v.nome, o.nome + (st.testo ? ` (${st.testo})` : '') + (st.ok ? ' ✓' : '')]); }));
+  C.allestimenti.forEach(g => g.voci.forEach(v => { if (!v.opts) return; const st = E.allest[v.id] || {}, o = v.opts.find(x => x.id === st.opt); if (o) al.push([v.nome, o.nome + (st.testo ? ` (${st.testo})` : '') + (st.ok ? ' ✓' : '')]); }));
   out.push(['Allestimenti', al]);
-  const ad = CAT.addons.filter(a => (E.addons[a.id] || {}).on && !a.link).map(a => { const v = addonVariant(a, E.addons[a.id]); return [a.nome, v ? v.nome.split(' · ')[0] : '']; });
+  const ad = S.settings.addons.filter(a => (E.addons[a.id] || {}).on && !a.link).map(a => { const v = addonVariant(a, E.addons[a.id]); return [a.nome, v ? v.nome.split(' · ')[0] : '']; });
   out.push(['Add-on', ad]);
   out.push(['Richieste speciali', E.special.filter(s => s.stato !== 'Rifiutato').map(s => [s.tipo, s.titolo])]);
   return out.filter(([, a]) => a.length);
@@ -36,6 +38,8 @@ function summaryBlocks(E) {
 
 /* ---------------------------------------------------------------- ECONOMICS */
 VIEWS.economics = E => {
+  if (syncPagamenti(E)) save();
+  const cust = customizations(E);
   const q = computeQuote(E), c = completeness(E), L = q.listino;
   const secs = []; q.lines.forEach(l => { let s = secs.find(x => x.n === l.sec); if (!s) secs.push(s = { n: l.sec, lines: [], tot: 0 }); s.lines.push(l); s.tot += l.tot; });
   const todayIt = new Date().toLocaleDateString('it-IT', { day: 'numeric', month: 'long', year: 'numeric' });
@@ -43,7 +47,7 @@ VIEWS.economics = E => {
   const doc = `<div class="quote" id="quote"><div class="qh"><b>LA STELLA</b><i>NEW CONCEPT BANQUETING</i></div>
     <h1 style="font-size:34px;text-align:center">Preventivo ${E.q.tipo === 'Matrimonio' ? 'Wedding' : 'Evento'}</h1><p style="text-align:center;color:var(--muted);margin:6px 0 0">Proposta Diamante 2026 · elaborato il ${todayIt}</p>
     <h2>L'evento</h2><div class="kv"><div><span>Clienti</span>${esc(evName(E))}</div><div><span>Data</span>${esc(fmtDate(E.q.data))}</div><div><span>Location</span>${esc(E.q.locationNome || '—')}</div><div><span>Pranzo / cena</span>${esc(E.q.pasto)} · ${q.giorno === 'sabato' ? 'tariffa sabato' : 'tariffa domenica–venerdì'}</div>
-      <div><span>Ospiti</span>${num(E.q.adulti)} adulti${+E.q.garantiti ? ` (${num(E.q.garantiti)} garantiti)` : ''}${+E.q.bambini ? ` · ${num(E.q.bambini)} bambini` : ''}${+E.q.neonati ? ` · ${num(E.q.neonati)} neonati` : ''}${+E.q.staff ? ` · ${num(E.q.staff)} staff` : ''}</div><div><span>Wedding planner</span>${esc(E.q.planner || '—')}</div></div>
+      <div><span>Ospiti</span>${num(E.q.adulti)} adulti${+E.q.bambini ? ` · ${num(E.q.bambini)} bambini` : ''}${+E.q.neonati ? ` · ${num(E.q.neonati)} neonati` : ''}${+E.q.staff ? ` · ${num(E.q.staff)} staff` : ''}</div><div><span>Wedding planner</span>${esc(E.q.planner || '—')}</div></div>
     ${sum.length ? `<h2>Riepilogo delle scelte</h2><div class="sel">${sum.map(([t, rows]) => `<div><b>${t}</b>${rows.map(([k, v]) => `<div style="margin:2px 0"><span class="muted">${esc(k)}${v ? ':' : ''}</span> ${esc(v)}</div>`).join('')}</div>`).join('')}</div>` : ''}
     <h2>Quotazione</h2>
     <table class="tb" style="border:0"><thead><tr><th>Descrizione</th><th class="num">Q.tà</th><th class="num">Unitario</th><th class="num">Importo</th></tr></thead><tbody>
@@ -58,7 +62,8 @@ VIEWS.economics = E => {
       <div class="field"><label>Adulti</label><input type="number" data-b="q.adulti" data-r value="${E.q.adulti}"></div><div class="field"><label>Bambini</label><input type="number" data-b="q.bambini" data-r value="${E.q.bambini}"></div>
       <div class="field"><label>Neonati</label><input type="number" data-b="q.neonati" data-r value="${E.q.neonati}"></div>
       <div class="field"><label>Tariffa giorno</label><select data-b="q.giorno" data-r>${[['auto', 'Auto (' + (q.giorno === 'sabato' ? 'sab' : 'dom–ven') + ')'], ['sabato', 'Sabato'], ['feriale', 'Dom–Ven']].map(([k, l]) => `<option value="${k}" ${E.q.giorno === k ? 'selected' : ''}>${l}</option>`).join('')}</select></div></div>
-      <p class="hint" style="margin-top:10px">${esc(L.nome)}: listino € ${L.listino} → <b>€ ${q.P}</b> a persona (${q.giorno === 'sabato' ? 'sabato' : 'dom–ven'}), minimo ${L.minAdulti} adulti.</p></div>
+      <p class="hint" style="margin-top:10px">${esc(L.nome)}: listino € ${L.listino} → <b>€ ${q.P}</b> a persona (${q.giorno === 'sabato' ? 'sabato' : 'dom–ven'}). Regole: min ${L.minAdulti} adulti; sotto, −€ ${L.scontoMancante} per ospite mancante (min ${L.minGarantito}); dal ${L.minAdulti + 1}° ospite −€ ${L.scontoOltre} solo con cocktail bar.</p></div>
+    ${cust.length ? `<div class="alert" style="margin-bottom:8px"><b>⚠ Customizzazioni (${cust.length})</b><div class="hint">Scostamenti da listino e catalogo: verificarli prima di inviare il preventivo.</div><ul style="margin:6px 0 0 18px;padding:0">${cust.map(c => `<li class="small"><b>${esc(c.sec)}</b> · ${esc(c.text)}</li>`).join('')}</ul></div>` : ''}
     ${q.warnings.map(w => `<div class="alert">${esc(w)}</div>`).join('')}${q.infos.map(w => `<div class="alert info">${esc(w)}</div>`).join('')}
     <div class="card" style="margin-top:16px"><h4 style="margin-bottom:10px">Rettifiche manuali</h4><p class="hint">Sconti (importo negativo) o maggiorazioni.</p>
       ${rett.map((r, i) => `<div class="row" style="gap:6px;margin-bottom:6px"><input type="text" style="flex:2" data-b="econ.rettifiche.${i}.desc" value="${esc(r.desc)}" placeholder="Descrizione"><input type="number" style="flex:1" data-b="econ.rettifiche.${i}.importo" data-r value="${r.importo}"><button class="btn ghost sm" data-act="rt-del" data-i="${i}">✕</button></div>`).join('')}
@@ -72,16 +77,21 @@ VIEWS.economics = E => {
 function pagamentiHtml(E, q) {
   const P = E.pagamenti, iva = S.settings.iva / 100, tot = P.reduce((a, x) => a + (Number(x.importo) || 0), 0), paid = P.filter(x => x.paid).reduce((a, x) => a + (Number(x.importo) || 0), 0);
   const diff = q.imponibile - tot;
-  return `<div class="card noprint" style="margin-top:18px"><div class="chead"><h3>Scadenzario pagamenti</h3><span class="muted small">importi oltre IVA ${S.settings.iva}%</span><button class="btn sm alt right" data-act="pay-add">＋ Rata</button></div>
+  return `<div class="card noprint" style="margin-top:18px"><div class="chead"><h3>Scadenziario pagamenti</h3><span class="muted small">importi oltre IVA ${S.settings.iva}%</span>
+    ${E.pagAuto ? '<span class="pill ok">automatico dalla data dell\'evento</span>' : '<span class="pill warn">modificato a mano</span> <button class="btn sm alt" data-act="pay-auto">Ricalcola automaticamente</button>'}<button class="btn sm alt right" data-act="pay-add">＋ Rata</button></div>
+    ${!E.q.data ? '<div class="alert" style="margin:10px 0">Scegli la data dell\'evento nel Questionario per calcolare le scadenze.</div>' : ''}
     ${P.length ? `<table class="tb"><thead><tr><th style="width:44px">Pagato</th><th>Descrizione</th><th>Scadenza</th><th class="num">Importo (iva escl.)</th><th class="num">Iva incl.</th><th></th></tr></thead><tbody>
-    ${P.map((x, i) => { const late = !x.paid && x.due && new Date(x.due + 'T23:59:59') < new Date(); return `<tr><td><input type="checkbox" data-b="pagamenti.${i}.paid" data-r ${x.paid ? 'checked' : ''}></td><td><input type="text" data-b="pagamenti.${i}.desc" value="${esc(x.desc)}"></td>
-      <td><input type="date" data-b="pagamenti.${i}.due" data-r value="${esc(x.due)}">${late ? ' <span class="pill bad">scaduta</span>' : ''}</td><td class="num"><input type="number" style="width:110px" data-b="pagamenti.${i}.importo" data-r value="${x.importo}"></td><td class="num">${eur((Number(x.importo) || 0) * (1 + iva))}</td><td><button class="btn ghost sm" data-act="pay-del" data-i="${i}">✕</button></td></tr>`; }).join('')}</tbody>
+    ${P.map((x, i) => { const late = !x.paid && x.due && new Date(x.due + 'T23:59:59') < new Date(); return `<tr><td><input type="checkbox" data-b="pagamenti.${i}.paid" data-r ${x.paid ? 'checked' : ''}></td><td><input type="text" data-b="pagamenti.${i}.desc" data-hook="paymanual" value="${esc(x.desc)}"></td>
+      <td><input type="date" style="width:auto" data-b="pagamenti.${i}.due" data-hook="paymanual" data-r value="${esc(x.due)}">${late ? ' <span class="pill bad">scaduta</span>' : ''}</td><td class="num"><input type="number" style="width:110px" data-b="pagamenti.${i}.importo" data-hook="paymanual" data-r value="${x.importo}"></td><td class="num">${eur((Number(x.importo) || 0) * (1 + iva))}</td><td><button class="btn ghost sm" data-act="pay-del" data-i="${i}">✕</button></td></tr>`; }).join('')}</tbody>
     <tfoot><tr><td></td><td>Totale rate</td><td></td><td class="num">${eur(tot)}</td><td class="num">${eur(tot * (1 + iva))}</td><td></td></tr></tfoot></table>
     <div class="row" style="margin-top:10px"><span class="pill ok">Incassato ${eur(paid)}</span><span class="pill ${Math.abs(diff) < 0.5 ? 'ok' : 'warn'}">${Math.abs(diff) < 0.5 ? 'Rate = preventivo' : (diff > 0 ? 'Da pianificare ' + eur(diff) : 'Rate oltre il preventivo di ' + eur(-diff)) + ' (iva escl.)'}</span><span class="pill">Residuo da incassare ${eur(q.imponibile - paid)} iva escl.</span></div>`
-    : '<p class="muted">Nessuna rata. Aggiungi caparre e saldo secondo l\'articolo 2.3 del contratto.</p>'}</div>`;
+    : '<p class="muted">Nessuna rata.</p>'}
+    <p class="hint" style="margin-top:8px">Regole dal contratto (modificabili in Impostazioni → Scadenziario): caparra alla firma, completamento del 30 % a un anno dall'evento, 40 % a 120 giorni lavorativi, saldo a 10 giorni lavorativi. Gli importi seguono il totale del preventivo.</p></div>`;
 }
-ACTIONS['pay-add'] = () => { curEvent().pagamenti.push({ desc: '', due: '', importo: '', paid: false }); save(); rr(); };
-ACTIONS['pay-del'] = el => { curEvent().pagamenti.splice(+el.dataset.i, 1); save(); rr(); };
+HOOKS.paymanual = () => { curEvent().pagAuto = false; };
+ACTIONS['pay-auto'] = () => { const E = curEvent(); E.pagAuto = true; syncPagamenti(E); save(); rr(); };
+ACTIONS['pay-add'] = () => { curEvent().pagAuto = false; curEvent().pagamenti.push({ desc: '', due: '', importo: '', paid: false }); save(); rr(); };
+ACTIONS['pay-del'] = el => { curEvent().pagAuto = false; curEvent().pagamenti.splice(+el.dataset.i, 1); save(); rr(); };
 ACTIONS['rt-add'] = () => { curEvent().econ.rettifiche.push({ desc: '', importo: '' }); save(); rr(); };
 ACTIONS['rt-del'] = el => { curEvent().econ.rettifiche.splice(+el.dataset.i, 1); save(); rr(); };
 ACTIONS['export-quote'] = () => {

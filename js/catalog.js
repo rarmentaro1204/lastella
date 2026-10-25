@@ -369,22 +369,57 @@ CAT.addons = [
     varianti: [{ id: 'e400', nome: 'Entro il 30° giorno lavorativo prima · € 400/ora', prezzo: 400 }, { id: 'e1000', nome: 'Dal 30° giorno lavorativo al giorno prima · € 1.000/ora', prezzo: 1000 }] },
 ];
 
-/* ---------------------------------------------------------------- preventivo (listini) */
-CAT.listiniDefault = [
-  { id: 'castella', nome: 'La Castella (San Secondo di Pinerolo)', listino: 179, sabato: 145, feriale: 140,
-    minAdulti: 100, scontoOltre: 10, scontoMancante: 60, minGarantito: 60,
-    spazi: [
-      { momento: 'Cerimonia', a: 'Boschetto', b: 'Salone' },
-      { momento: 'Aperitivo', a: 'Bosco', b: 'Sale interne' },
-      { momento: 'Cena', a: 'Fronte villa / Fienile', b: 'Fienile' },
-      { momento: 'Taglio torta', a: 'Bosco', b: 'Salone' },
-      { momento: 'Caffè e dolci / Lounge bar', a: 'Bosco', b: 'Salone' },
-      { momento: 'Cocktail bar', a: 'Cantina', b: 'Cantina' },
-    ] },
-  { id: 'generico', nome: 'Altra location (tariffa listino)', listino: 179, sabato: 179, feriale: 179,
-    minAdulti: 100, scontoOltre: 10, scontoMancante: 60, minGarantito: 60,
-    spazi: [
-      { momento: 'Cerimonia', a: '', b: '' }, { momento: 'Aperitivo', a: '', b: '' }, { momento: 'Cena', a: '', b: '' },
-      { momento: 'Taglio torta', a: '', b: '' }, { momento: 'Caffè e dolci / Lounge bar', a: '', b: '' }, { momento: 'Cocktail bar', a: '', b: '' },
-    ] },
+/* ---------------------------------------------------------------- listini e location (seed) */
+CAT.listiniSeed = [
+  { id: 'diamante-castella', nome: 'Diamante 2026 · La Castella', listino: 179, sabato: 145, feriale: 140, minAdulti: 100, scontoOltre: 10, scontoMancante: 60, minGarantito: 60 },
+  { id: 'diamante-base', nome: 'Diamante 2026 · listino base', listino: 179, sabato: 179, feriale: 179, minAdulti: 100, scontoOltre: 10, scontoMancante: 60, minGarantito: 60 },
 ];
+const MOMENTI = ['Cerimonia', 'Aperitivo', 'Cena', 'Taglio torta', 'Caffè e dolci / Lounge bar', 'Cocktail bar'];
+CAT.locationsSeed = [
+  { id: 'castella', nome: 'La Castella (San Secondo di Pinerolo)', listinoId: 'diamante-castella', spazi: [
+    { momento: 'Cerimonia', a: 'Boschetto', b: 'Salone' }, { momento: 'Aperitivo', a: 'Bosco', b: 'Sale interne' }, { momento: 'Cena', a: 'Fronte villa / Fienile', b: 'Fienile' },
+    { momento: 'Taglio torta', a: 'Bosco', b: 'Salone' }, { momento: 'Caffè e dolci / Lounge bar', a: 'Bosco', b: 'Salone' }, { momento: 'Cocktail bar', a: 'Cantina', b: 'Cantina' } ] },
+];
+/* scadenziario pagamenti (dal contratto): importo fisso, % del totale, oppure «cumulativo» = completa la % indicata sul totale */
+CAT.scadenziarioSeed = [
+  { desc: 'Caparra confirmatoria alla firma', tipo: 'fisso', valore: 2000, quando: 'firma', n: 5 },
+  { desc: 'Caparra confirmatoria (1 anno prima)', tipo: 'cumulativo', valore: 30, quando: 'giorniPrima', n: 364 },
+  { desc: 'Caparra confirmatoria (120 giorni lavorativi prima)', tipo: 'pct', valore: 40, quando: 'lavorativiPrima', n: 120 },
+  { desc: 'Saldo (10 giorni lavorativi prima)', tipo: 'cumulativo', valore: 100, quando: 'lavorativiPrima', n: 10 },
+];
+
+/* ---------------------------------------------------------------- ricette dal menù 2025 del preventivo (non presenti nel menù 2026) */
+(function menu2025() {
+  const T = ['menu 2025'], x = (...a) => Object.assign(R(...a), { tags: T.concat((a[6] || []))});
+  const isl = (id, ...items) => { const i = CAT.isole.find(o => o.id === id); if (i) i.items.push(...items); };
+  isl('tacos', x('ap25-burrito', 'Mini burrito', 'chili con carne, fagioli, cheddar', 'Tortillas;Macinato di manzo;Fagioli;Cheddar;Pomodoro;Spezie tex-mex', 'Chili con carne;Burrito arrotolati'), x('ap25-taco-tonno', 'Taco di pesce (tartare di tonno)', 'tartare di tonno, kefir al finocchietto', 'Tonno;Kefir;Finocchietto;Taco shell', 'Tartare di tonno;Kefir al finocchietto'));
+  isl('trattoria', x('ap25-polpo', 'Polpo scottato', 'gazpacho verde, maionese di corallo', 'Polpo;Cetrioli;Peperone verde;Corallo di gambero;Uova;Olio', 'Polpo cotto e scottato;Gazpacho verde;Maionese di corallo'), x('ap25-merenda', 'Ricordo della merenda', 'pane e salame', 'Pane;Salame;Burro', 'Composizione pane e salame'));
+  isl('tartufo', x('ap25-merluzzo', 'Merluzzo al latte', 'scaglie di tartufo', 'Merluzzo;Latte;Tartufo', 'Merluzzo cotto nel latte'));
+  CAT.isole.push({ id: 'tartare', tipo: 'show', nome: 'Tartare', sub: 'Menù 2025', items: [
+    x('ap25-vitello-granda', 'Vitello la Granda', 'affumicatura al cannello, fonduta di toma, sesamo', 'Vitello (Granda);Toma;Sesamo', 'Tartare di vitello;Fonduta di toma;Affumicatura al cannello'),
+    x('ap25-cervo', 'Cervo', 'sale Maldon, riduzione ai ‘persi pien’', 'Cervo;Sale Maldon;Pesche ripiene (persi pien)', 'Tartare di cervo;Riduzione ai persi pien'),
+    x('ap25-wagyu', 'Wagyu', 'olio al wasabi, crudo di Cuneo DOP', 'Wagyu;Wasabi;Crudo di Cuneo DOP', 'Tartare di wagyu;Olio al wasabi')] });
+  isl('correnti', x('ap25-yakitori', 'Yakitori di triglia', 'arachidi, curry rosso Thai', 'Triglia;Arachidi;Curry rosso Thai', 'Spiedini di triglia;Salsa al curry rosso'));
+  isl('ospitalita', x('ap25-granita', 'Mini granita di stagione', 'al bicchierino', 'Frutta di stagione;Zucchero', 'Granita mantecata', 'Bicchierini in abbattitore;Servizio', ['vegano']));
+  isl('radici', x('ap25-bagna', 'Peperone e bagna cauda', 'conetto con mousse di acciughe, peperone disidratato', 'Cialda a cono;Acciughe;Peperone;Aglio', 'Mousse di acciughe;Peperone disidratato;Coni'));
+  isl('vegan', x('ap25-panzerotto', 'Panzerotto vegano', '', 'Impasto per panzerotti;Pomodoro;Verdure;Olio per frittura', 'Panzerotti farciti', '', ['vegano']));
+  CAT.entree.push(x('en25-gambero', 'Gambero panato nel panko e cocco', 'crema di fave, salsa rosa', 'Gamberi;Panko;Cocco;Fave;Maionese;Ketchup', 'Gamberi panati;Crema di fave;Salsa rosa'),
+    x('en25-bonbon', 'Bon bon di vitello tonnato', 'polvere di capperi, caviale all’aceto balsamico', 'Vitello;Tonno;Capperi;Aceto balsamico;Gelatina', 'Bon bon di vitello tonnato;Polvere di capperi;Caviale di aceto balsamico'));
+  const g = n => CAT.primi.find(o => o.gruppo === n);
+  g('I risotti').items.push(x('pr25-robiola', 'Carnaroli Riserva con robiola ed erbette', 'brodo di camomilla, fiori di campo', 'Riso Carnaroli Riserva;Robiola;Erbette;Camomilla;Fiori eduli', 'Brodo di camomilla;Crema di robiola;Tostatura e cottura del riso', 'Mantecatura a pass;Impiattamento', ['vegetariano']));
+  g('I plin').items.push(x('pr25-plin-carne', 'Raviolini del Plin di carne saltati nel sugo d’arrosto', 'crudo di salsiccia di vitello, cime di rapa croccanti', 'Farina;Uova;Carni per ripieno;Sugo d’arrosto;Salsiccia di vitello;Cime di rapa', 'Plin formati;Sugo d’arrosto;Cime di rapa croccanti'), x('pr25-plin-ortiche', 'Raviolini del Plin alle ortiche ed erbe spontanee', 'spuma al cacio e pepe', 'Farina;Uova;Ortiche;Erbe spontanee;Pecorino;Pepe', 'Plin formati;Spuma al cacio e pepe', '', ['vegetariano']));
+  g('Le paste di Gragnano').items.push(x('pr25-mischiata', 'Pasta mischiata, fagioli cannellini, cozze, zafferano', '', 'Pasta mischiata;Fagioli cannellini;Cozze;Zafferano', 'Crema di cannellini;Cozze aperte'));
+  CAT.secondi.push(x('se25-scamone', 'Scamone di bovino a bassa temperatura', 'patate sfogliate, fondo bruno al vermouth', 'Scamone di bovino;Patate;Vermouth;Fondo bruno', 'Scamone cotto a bassa temperatura;Patate sfogliate;Fondo al vermouth'),
+    x('se25-cinghiale', 'Costina di cinghiale', 'cavolo riccio, Martin Sec al Montanera, crema di polenta al Plaisentif', 'Costina di cinghiale;Cavolo riccio;Martin Sec;Polenta;Plaisentif', 'Costina brasata;Crema di polenta;Cavolo riccio'),
+    x('se25-merluzzo', 'Merluzzo a bassa temperatura', 'verza, crema di pane e cavolfiori', 'Merluzzo;Verza;Pane;Cavolfiore', 'Merluzzo a bassa temperatura;Crema di pane e cavolfiori'),
+    x('se25-branzino', 'Branzino al timo e limone', 'purè di patate e chips, fumetto alla barbabietola', 'Branzino;Timo;Limone;Patate;Barbabietola;Fumetto di pesce', 'Purè di patate;Chips di patate;Fumetto alla barbabietola'));
+  CAT.dessert.splice(4, 0, x('de25-diamantino', 'Diamantino', 'crema pasticciera allo zenzero, frutta di stagione (crostata)', 'Farina;Burro;Zenzero;Latte;Uova;Frutta di stagione', 'Frolla;Crema pasticciera allo zenzero'), x('de25-frutti-rossi', 'Mousse ai frutti rossi', 'cioccolato bianco e mirtilli, crumble salato alla mandorla', 'Frutti rossi;Cioccolato bianco;Mirtilli;Mandorle;Panna', 'Mousse;Crumble salato alla mandorla'));
+  CAT.lounge.dolci.push(x('lo25-cioccolatini', 'Cioccolatini artigianali', '', 'Cioccolatini artigianali', 'Cioccolatini preparati'));
+})();
+
+/* ---------------------------------------------------------------- semi dei dati modificabili dall'utente */
+function seedCatalog() {
+  const c = { isole: CAT.isole, preEntree: CAT.preEntree, entree: CAT.entree, primi: CAT.primi, secondi: CAT.secondi, formaggi: CAT.formaggi, dessert: CAT.dessert.filter(r => r.id !== 'de-torta'), torta: CAT.dessert.find(r => r.id === 'de-torta'), lounge: CAT.lounge, buvette: CAT.buvette, vini: CAT.vini, menuConsigliati: CAT.menuConsigliati, menuBimbi: CAT.menuBimbi, allestimenti: CAT.allestimenti, brindisi: CAT.brindisi, esclusivaNota: CAT.esclusivaNota };
+  return JSON.parse(JSON.stringify(c));
+}
+const seedAddons = () => JSON.parse(JSON.stringify(CAT.addons));
