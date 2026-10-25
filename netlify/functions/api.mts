@@ -1,14 +1,27 @@
 import { getStore } from "@netlify/blobs";
+import { randomBytes } from "node:crypto";
 import type { Config } from "@netlify/functions";
 import { createApi } from "../lib/core.mjs";
 
-const secret = Netlify.env.get("LASTELLA_SECRET");
+const stores = (name: string) => getStore({ name, consistency: "strong" });
 
-export default async (req: Request) => {
-  if (!secret) return Response.json({ error: "Server non configurato (LASTELLA_SECRET mancante)." }, { status: 500 });
-  const api = createApi({ secret, stores: (name: string) => getStore({ name, consistency: "strong" }) });
-  return api(req);
-};
+/* Segreto per firmare le sessioni: da variabile d'ambiente LASTELLA_SECRET se presente,
+   altrimenti generato al primo avvio e conservato nell'archivio privato (Blobs). */
+let cached: string | undefined;
+async function getSecret(): Promise<string> {
+  if (cached) return cached;
+  const env = Netlify.env.get("LASTELLA_SECRET");
+  if (env) return (cached = env);
+  const meta = stores("meta");
+  let s = await meta.get("secret");
+  if (!s) {
+    await meta.set("secret", randomBytes(48).toString("base64url"), { onlyIfNew: true });
+    s = await meta.get("secret");
+  }
+  return (cached = s as string);
+}
+
+export default async (req: Request) => createApi({ secret: await getSecret(), stores })(req);
 
 export const config: Config = {
   path: "/api/*",
