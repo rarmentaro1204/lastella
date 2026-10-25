@@ -30,15 +30,25 @@ function monthGrid(y, mo, o = {}) {
   return h + '</div>';
 }
 const calLegend = () => '<div class="legend" style="margin-top:10px"><span><i class="lg busy"></i> Occupata da evento confermato</span><span><i class="lg pend"></i> Preventivo non ancora confermato</span><span><i class="lg sel"></i> Data scelta</span></div>';
-function calModal(E, y, mo) {
-  UI.cal = { y, m: mo };
-  const prev = new Date(y, mo - 1, 1), next = new Date(y, mo + 1, 1);
-  openModal(`<div class="row"><button class="btn sm alt" data-act="cal-nav" data-y="${prev.getFullYear()}" data-m="${prev.getMonth()}">‹</button><h3 style="margin:0;flex:1;text-align:center">${MESI[mo]} ${y}</h3><button class="btn sm alt" data-act="cal-nav" data-y="${next.getFullYear()}" data-m="${next.getMonth()}">›</button></div>
-    <div class="sp"></div>${monthGrid(y, mo, { pick: true, selected: E.q.data, exceptId: E.id })}${calLegend()}
-    <div class="acts">${E.q.data ? '<button class="btn danger" data-act="cal-pick" data-d="">Togli la data</button>' : ''}<button class="btn alt" data-act="modal-close">Chiudi</button></div>`);
+/* selezione data in tre passaggi: anno → mese → giorno */
+function calModal(E, step = 'year', y, mo) {
+  UI.cal = { step, y, m: mo };
+  const now = new Date(), Y = now.getFullYear(), sel = E.q.data ? new Date(E.q.data + 'T12:00:00') : null;
+  const crumbs = `<div class="steps"><span class="${step === 'year' ? 'on' : 'done'}">1 · Anno</span><span class="${step === 'month' ? 'on' : step === 'day' ? 'done' : ''}">2 · Mese</span><span class="${step === 'day' ? 'on' : ''}">3 · Giorno</span></div>`;
+  const evIn = (yy, mm) => S.events.filter(e => e.id !== E.id && e.q.data && e.stato !== 'Annullato' && +e.q.data.slice(0, 4) === yy && (mm === undefined || +e.q.data.slice(5, 7) - 1 === mm));
+  const badges = list => `${list.filter(isConfirmed).length ? `<span class="pill bad">${list.filter(isConfirmed).length} occupate</span>` : ''} ${list.filter(e => !isConfirmed(e)).length ? `<span class="pill warn">${list.filter(e => !isConfirmed(e)).length} preventivi</span>` : ''}`;
+  let body;
+  if (step === 'year') {
+    body = `<h3 style="margin-bottom:6px">In che anno si terrà l'evento?</h3><div class="yrs">${[0, 1, 2, 3].map(k => { const yy = Y + k, l = evIn(yy); return `<button type="button" class="ybtn ${sel && sel.getFullYear() === yy ? 'sel' : ''}" data-act="cal-step" data-s="month" data-y="${yy}"><b>${yy}</b><span>${k === 0 ? 'anno in corso' : k === 1 ? 'anno prossimo' : `tra ${k} anni`}</span><i>${badges(l) || '<span class="muted small">date libere</span>'}</i></button>`; }).join('')}</div>`;
+  } else if (step === 'month') {
+    body = `<div class="row"><button class="btn sm alt" data-act="cal-step" data-s="year">‹ Anno</button><h3 style="margin:0">${y}</h3></div><div class="sp"></div><div class="mths">${MESI.map((mn, k) => { const l = evIn(y, k), past = y === Y && k < now.getMonth(); return `<button type="button" class="mbtn ${sel && sel.getFullYear() === y && sel.getMonth() === k ? 'sel' : ''}" ${past ? 'disabled' : `data-act="cal-step" data-s="day" data-y="${y}" data-m="${k}"`}><b>${mn}</b><i>${badges(l)}</i></button>`; }).join('')}</div>`;
+  } else {
+    body = `<div class="row"><button class="btn sm alt" data-act="cal-step" data-s="month" data-y="${y}">‹ ${y}</button><h3 style="margin:0;flex:1;text-align:center">${MESI[mo]} ${y}</h3></div><div class="sp"></div>${monthGrid(y, mo, { pick: true, selected: E.q.data, exceptId: E.id })}${calLegend()}`;
+  }
+  openModal(`${crumbs}${body}<div class="acts">${E.q.data ? '<button class="btn danger" data-act="cal-pick" data-d="">Togli la data</button>' : ''}<button class="btn alt" data-act="modal-close">Chiudi</button></div>`);
 }
-ACTIONS['cal-open'] = () => { const E = curEvent(), d = E.q.data ? new Date(E.q.data + 'T12:00:00') : new Date(); calModal(E, d.getFullYear(), d.getMonth()); };
-ACTIONS['cal-nav'] = el => calModal(curEvent(), +el.dataset.y, +el.dataset.m);
+ACTIONS['cal-open'] = () => calModal(curEvent(), 'year');
+ACTIONS['cal-step'] = el => calModal(curEvent(), el.dataset.s, el.dataset.y ? +el.dataset.y : (UI.cal || {}).y, el.dataset.m !== undefined ? +el.dataset.m : (UI.cal || {}).m);
 ACTIONS['cal-pick'] = el => {
   const E = curEvent(), d = el.dataset.d; E.q.data = d;
   if (d) { const ds = dateStatus(d, E.id); if (ds && ds.st === 'quote') toast(`Attenzione: per questa data c'è già un preventivo (${evName(ds.ev)})`); autoDates(E); }

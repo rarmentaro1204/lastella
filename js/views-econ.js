@@ -54,6 +54,7 @@ VIEWS.economics = E => {
     ${secs.map(s => `<tr><td colspan="4" style="background:#faf8f5;font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--sand);font-weight:700">${esc(s.n)}</td></tr>${s.lines.map(l => `<tr><td>${esc(l.label)}</td><td class="num">${num(l.qty)}</td><td class="num">${eur(l.unit)}</td><td class="num">${eur(l.tot)}</td></tr>`).join('')}`).join('')}</tbody></table>
     <div class="totals"><div><span>Imponibile</span><b>${eur(q.imponibile)}</b></div><div><span>IVA ${S.settings.iva}%</span><b>${eur(q.iva)}</b></div><div class="big"><span>Totale</span><b>${eur(q.totale)}</b></div>
       ${q.coperti ? `<div class="small muted"><span>Per ospite (iva escl.)</span><span>${eur(q.imponibile / (+E.q.adulti || 1))}</span></div>` : ''}</div>
+    ${condizioniPagamento(E, q)}
     ${E.econ.note ? `<h2>Note</h2><p style="white-space:pre-wrap">${esc(E.econ.note)}</p>` : ''}
     <div class="fine">Prezzi in euro oltre IVA nella misura di legge. Prezzi e condizioni soggetti a rivalutazione in base a data, location, numero di ospiti, allestimenti, servizi e personalizzazioni. Preventivo valido unicamente per la data e la location indicate${E.q.validita ? `, con validità fino al ${new Date(E.q.validita + 'T12:00:00').toLocaleDateString('it-IT')}` : ''}. Le scelte di allestimento vanno effettuate entro ${E.q.scadenzaAllest ? new Date(E.q.scadenzaAllest + 'T12:00:00').toLocaleDateString('it-IT') : 'la data concordata'}; le scelte food & beverage si definiscono in fase di definizione menù. Le ricette possono variare in base a reperibilità e qualità della materia prima.<br>La Stella Catering s.r.l. · Via Val Pellice 7/c, San Secondo di Pinerolo (TO) · P.IVA 12524970014 · info@cateringlastella.com · +39 339 385 8184</div></div>`;
 
@@ -184,3 +185,18 @@ ACTIONS['shop-toggle'] = el => {
   recipeList(E).forEach(x => E.recipes[x.r.id].ing.forEach(it => { if (norm(it.n) === key) it.ok = on; }));
   save(); rr();
 };
+
+/* condizioni di pagamento nel preventivo: date precise se è stata scelta la data di firma, altrimenti condizioni generiche in giorni */
+function condizioniPagamento(E, q) {
+  const rows = S.settings.scadenziario; if (!rows.length) return '';
+  const iva = S.settings.iva / 100, amt = buildScadenziario(E, q.imponibile), withDates = !!E.q.firma && !!E.q.data;
+  const when = r => {
+    const n = Number(r.n) || 0;
+    if (r.quando === 'firma') return n ? `entro ${n} giorni dalla firma del contratto` : 'alla firma del contratto';
+    if (r.quando === 'giorniPrima') return `${n} giorni prima della data dell'evento`;
+    return `${n} giorni lavorativi prima della data dell'evento`;
+  };
+  return `<h2>Condizioni di pagamento</h2><table class="tb" style="border:0"><thead><tr><th>Rata</th><th>${withDates ? 'Scadenza' : 'Termine di pagamento'}</th><th class="num">Importo</th><th class="num">Iva incl.</th></tr></thead><tbody>
+    ${rows.map((r, i) => `<tr><td>${esc(r.desc)}</td><td>${withDates && amt[i].due ? new Date(amt[i].due + 'T12:00:00').toLocaleDateString('it-IT') : esc(when(r))}</td><td class="num">${eur(amt[i].importo)}</td><td class="num">${eur(amt[i].importo * (1 + iva))}</td></tr>`).join('')}</tbody></table>
+    <p class="small muted" style="margin-top:6px">${withDates ? 'Le scadenze sono calcolate dalla data di firma del contratto e dalla data dell\'evento.' : 'I termini decorrono dalla firma del contratto e dalla data dell\'evento; le date precise saranno indicate al momento della firma.'} Importi oltre IVA nella misura di legge.</p>`;
+}

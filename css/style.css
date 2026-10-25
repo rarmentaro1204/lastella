@@ -291,3 +291,13 @@ button.cal-c { cursor: pointer; } button.cal-c:hover:not(:disabled) { border-col
 .mini-row { display: flex; gap: 8px; align-items: center; margin: 4px 0; } .mini-row input { padding: 5px 8px; }
 
 .kpi .sub strong { font-family: var(--sans); font-stretch: 100%; font-size: inherit; font-weight: 700; color: inherit; display: inline; margin: 0; line-height: inherit; }
+
+/* ---------- selezione data in 3 passaggi ---------- */
+.steps { display: flex; gap: 6px; margin-bottom: 16px; } .steps span { flex: 1; text-align: center; padding: 6px 4px; font-size: 11px; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); border-bottom: 2px solid var(--line); }
+.steps span.on { color: var(--navy); border-color: var(--sand); font-weight: 700; } .steps span.done { color: var(--ok); border-color: var(--sage); }
+.yrs { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-top: 12px; }
+.ybtn { border: 1px solid var(--line); background: #fff; border-radius: 8px; padding: 18px 14px; text-align: center; cursor: pointer; display: flex; flex-direction: column; gap: 4px; align-items: center; font: inherit; } .ybtn:hover { border-color: var(--navy); background: var(--sand-3); }
+.ybtn b { font-family: var(--serif); font-stretch: 75%; font-weight: 400; font-size: 40px; color: var(--navy); line-height: 1; } .ybtn span { font-size: 11px; letter-spacing: .16em; text-transform: uppercase; color: var(--muted); } .ybtn i { font-style: normal; min-height: 22px; } .ybtn.sel { border-color: var(--navy); box-shadow: inset 0 0 0 1px var(--navy); }
+.mths { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.mbtn { border: 1px solid var(--line); background: #fff; border-radius: 6px; padding: 12px 8px; cursor: pointer; display: flex; flex-direction: column; gap: 6px; align-items: center; font: inherit; } .mbtn:hover:not(:disabled) { border-color: var(--navy); background: var(--sand-3); } .mbtn:disabled { opacity: .35; cursor: not-allowed; }
+.mbtn b { font-weight: 700; font-size: 14px; } .mbtn i { font-style: normal; min-height: 20px; display: flex; gap: 4px; flex-wrap: wrap; justify-content: center; } .mbtn.sel { border-color: var(--navy); box-shadow: inset 0 0 0 1px var(--navy); }

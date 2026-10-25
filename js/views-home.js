@@ -54,10 +54,10 @@ function viewEvents() {
       <div class="ft"><button class="btn sm alt" data-act="dup-event" data-id="${E.id}">Duplica</button><button class="btn sm ghost right" data-act="del-event" data-id="${E.id}">Elimina</button></div></div>`;
   }).join('');
   const lo = CLOUD && AUTH.localOnly.length ? `<div class="alert info" style="margin-bottom:16px">Su questo browser ci sono <b>${AUTH.localOnly.length}</b> eventi creati prima del collegamento al cloud e non ancora condivisi. <button class="btn sm" data-act="upload-local">Carica nel cloud</button></div>` : '';
-  return lo + `<div class="secthead"><div><h1>Eventi</h1><p>Tutte le pratiche. Ogni evento raccoglie questionario, invitati e tavoli, menù, allestimenti, add-on, preventivo e ricettario.</p></div><button class="btn right" data-act="new-event">＋ Nuovo evento</button></div>
+  return lo + `<div class="secthead"><div><h1>Eventi</h1><p>Tutte le pratiche. Ogni evento raccoglie questionario, invitati e tavoli, menù, allestimenti, add-on, preventivo e ricettario.</p></div><span class="right row"><button class="btn alt" data-act="demo-40">Genera 40 eventi di esempio</button><button class="btn" data-act="new-event">＋ Nuovo evento</button></span></div>
     <div class="toolbar"><div class="chips">${[['all', 'Tutti'], ['conf', 'Confermati'], ['prev', 'In preventivo'], ['ann', 'Annullati']].map(([k, l]) => `<button class="chip ${f === k ? 'on' : ''}" data-act="ev-filter" data-v="${k}">${l}</button>`).join('')}</div>
       <select id="ev-year" style="width:auto"><option value="">Tutti gli anni</option>${years.map(y => `<option ${String(y) === yr ? 'selected' : ''}>${y}</option>`).join('')}</select></div>
-    ${list.length ? `<div class="evcards">${cards}</div>` : `<div class="empty"><h3>Nessun evento</h3><p>Crea il primo evento per iniziare il questionario con i clienti.</p><button class="btn" data-act="new-event">＋ Nuovo evento</button> <button class="btn alt" data-act="load-demo">Carica evento di esempio</button></div>`}`;
+    ${list.length ? `<div class="evcards">${cards}</div>` : `<div class="empty"><h3>Nessun evento</h3><p>Crea il primo evento per iniziare il questionario con i clienti.</p><button class="btn" data-act="new-event">＋ Nuovo evento</button> <button class="btn alt" data-act="load-demo">Carica evento di esempio</button> <button class="btn sand" data-act="demo-40">Genera 40 eventi di esempio</button></div>`}`;
 }
 ACTIONS['ev-filter'] = el => { UI.evF = el.dataset.v; rr(); };
 document.addEventListener('change', e => { if (e.target.id === 'ev-year') { UI.evY = e.target.value; rr(); } });
@@ -145,7 +145,7 @@ function viewSettings() {
       <td><select ${sb(`scadenziario.${i}.quando`)}>${[['firma', 'dopo la firma del contratto'], ['giorniPrima', 'giorni di calendario prima dell\'evento'], ['lavorativiPrima', 'giorni lavorativi prima dell\'evento']].map(([k, l]) => `<option value="${k}" ${r.quando === k ? 'selected' : ''}>${l}</option>`).join('')}</select></td>
       <td class="num"><input type="number" style="width:76px" ${sb(`scadenziario.${i}.n`)} value="${r.n}"></td><td>${delBtn('scadenziario', i, '✕')}</td></tr>`).join('')}</tbody></table>
     <p class="hint" style="margin-top:8px">Esempio dal contratto (€ 15.520): € 2.000 alla firma → completa al 30 % un anno prima (€ 2.656) → 40 % a 120 giorni lavorativi (€ 6.208) → saldo a 10 giorni lavorativi (€ 4.656).</p></div>`;
-  return head + teamCard() + `<div class="card" style="margin-top:16px"><h3>Backup dei dati</h3><p class="muted">${CLOUD ? 'Gli eventi sono nel cloud condiviso. Puoi scaricare una copia di sicurezza in qualsiasi momento.' : 'Gli eventi sono salvati nel browser di questo computer. Scarica un backup regolarmente, oppure per spostarli su un altro computer.'}</p>
+  return head + teamCard() + demoCard() + `<div class="card" style="margin-top:16px"><h3>Backup dei dati</h3><p class="muted">${CLOUD ? 'Gli eventi sono nel cloud condiviso. Puoi scaricare una copia di sicurezza in qualsiasi momento.' : 'Gli eventi sono salvati nel browser di questo computer. Scarica un backup regolarmente, oppure per spostarli su un altro computer.'}</p>
   <div class="row"><button class="btn" data-act="backup">⭳ Scarica backup (.json)</button>${CLOUD ? '' : '<label class="btn alt">⭱ Ripristina da backup<input type="file" accept=".json" hidden id="restore-file"></label><button class="btn danger right" data-act="wipe">Cancella tutti i dati</button>'}</div></div>`;
 }
 document.addEventListener('change', e => {
@@ -219,3 +219,104 @@ ACTIONS['cat-newyear'] = () => {
   const ys = Object.keys(S.settings.catalogs).map(Number), y = Math.max(...ys) + 1;
   S.settings.catalogs[y] = clone(S.settings.catalogs[Math.max(...ys)]); save(); go(`catalog/${y}/aperitivo`); toast(`Catalogo ${y} creato come copia del ${y - 1}: aggiornalo con il nuovo menù`);
 };
+
+/* ---------------------------------------------------------------- 40 EVENTI DI ESEMPIO (bozze dimostrative) */
+const NOMI_F = 'Giulia Chiara Francesca Sara Martina Elena Alessia Valentina Federica Silvia Laura Paola Elisa Irene Beatrice Marta Arianna Noemi Camilla Ilaria'.split(' ');
+const NOMI_M = 'Marco Luca Andrea Matteo Davide Simone Stefano Fabio Giorgio Enrico Alessio Gabriele Nicola Daniele Riccardo Paolo Michele Federico Lorenzo Tommaso'.split(' ');
+const COGNOMI = 'Rossi Bianchi Ferrari Russo Romano Colombo Ricci Marino Greco Bruno Gallo Conti Mancini Costa Giordano Rizzo Lombardi Moretti Barbieri Fontana Santoro Mariani Rinaldi Caruso Ferrara Galli Martini Leone Longo Gentile Vitale Serra Coppola Perrone Bosio Actis Garrone Tron Bertinetti'.split(' ');
+const isDemo = E => !!E.demo;
+
+function demoLocations() {
+  const L = S.settings.locations, base = S.settings.listini.find(l => l.id === 'diamante-base') || S.settings.listini[0];
+  if (!L.some(l => l.id === 'demo-villa')) L.push({ id: 'demo-villa', demo: true, nome: 'Villa Esempio (Torino)', listinoId: base.id, spazi: [{ momento: 'Cerimonia', a: 'Giardino all\'italiana', b: 'Salone delle feste' }, { momento: 'Aperitivo', a: 'Terrazza', b: 'Veranda' }, { momento: 'Cena', a: 'Orangerie', b: 'Salone delle feste' }, { momento: 'Taglio torta', a: 'Orangerie', b: 'Salone delle feste' }, { momento: 'Caffè e dolci / Lounge bar', a: 'Terrazza', b: 'Veranda' }, { momento: 'Cocktail bar', a: 'Cantina', b: 'Cantina' }] });
+  if (!L.some(l => l.id === 'demo-cascina')) L.push({ id: 'demo-cascina', demo: true, nome: 'Cascina Esempio (Cuneo)', listinoId: base.id, spazi: [{ momento: 'Cerimonia', a: 'Aia', b: 'Fienile' }, { momento: 'Aperitivo', a: 'Cortile', b: 'Portico' }, { momento: 'Cena', a: 'Tensostruttura', b: 'Fienile' }, { momento: 'Taglio torta', a: 'Tensostruttura', b: 'Fienile' }, { momento: 'Caffè e dolci / Lounge bar', a: 'Cortile', b: 'Portico' }, { momento: 'Cocktail bar', a: 'Stalla', b: 'Stalla' }] });
+}
+function generateDemoEvents(n = 40) {
+  let seed = 20261025; const r = () => (seed = (seed * 1664525 + 1013904223) % 4294967296) / 4294967296;
+  const pick = a => a[Math.floor(r() * a.length)], pickN = (a, k) => { const c = a.slice(), o = []; while (o.length < k && c.length) o.push(c.splice(Math.floor(r() * c.length), 1)[0]); return o; };
+  const today = new Date(); today.setHours(12, 0, 0, 0); const todayISO = isoOf(today), Y = today.getFullYear();
+  demoLocations();
+  const used = new Set(S.events.filter(isConfirmed).map(e => e.q.data));
+  const sat = (y, m) => { // un sabato casuale del mese (o, 15 % delle volte, venerdì/domenica)
+    for (let t = 0; t < 40; t++) { const d = new Date(y, m, 1 + Math.floor(r() * 28), 12); const off = r() < 0.15 ? (r() < 0.5 ? 1 : -1) : 0; d.setDate(d.getDate() + ((6 - d.getDay() + 7) % 7) + off); if (d.getMonth() !== m) continue; const iso = isoOf(d); if (!used.has(iso)) return iso; }
+    return isoOf(new Date(y, m, 15, 12));
+  };
+  const dayOff = k => { const d = new Date(today); d.setDate(d.getDate() + k); return isoOf(d); };
+  // piano: [data, esito]  esito: P=passato, T=oggi, N=prossimi, f=futuro
+  const plan = [];
+  [-200, -150, -105, -50].forEach(k => plan.push([dayOff(k), 'P']));
+  plan.push([todayISO, 'T'], [dayOff(6), 'N'], [dayOff(33), 'N'], [dayOff(47), 'N'], [dayOff(61), 'N'], [dayOff(75), 'N']);
+  [2, 3, 4, 4, 5, 5, 5, 6, 6, 7, 8, 8, 8, 9, 9, 10].forEach(m => plan.push([sat(Y + 1, m), 'f']));
+  [3, 4, 5, 5, 6, 8, 8, 9, 9].forEach(m => plan.push([sat(Y + 2, m), 'F']));
+  [4, 5, 6, 8, 9].forEach(m => plan.push([sat(Y + 3, m), 'F']));
+  const locs = S.settings.locations, made = [];
+  plan.slice(0, n).forEach(([data, esito], idx) => {
+    const E = newEvent(); E.demo = true;
+    const lp = r(); applyLocation(E, lp < 0.55 ? 'castella' : lp < 0.8 ? 'demo-villa' : 'demo-cascina');
+    const nf = pick(NOMI_F), nm = pick(NOMI_M), c1 = pick(COGNOMI), c2 = pick(COGNOMI), corp = r() < 0.08;
+    const tipo = corp ? 'Evento aziendale' : r() < 0.06 ? 'Compleanno' : r() < 0.04 ? 'Anniversario' : 'Matrimonio';
+    const first = r() < 0.5 ? [nf, c1] : [nm, c1], second = r() < 0.5 ? [nm, c2] : [nf, c2];
+    const sl = String(idx + 10).padStart(2, '0');
+    Object.assign(E.q, { sposo1: corp ? `${pick(NOMI_M)} ${c1} (Azienda ${c2} Srl)` : `${first[0]} ${first[1]}`, tel: `+39 340 ${String(1000 + idx * 37).slice(-3)} ${String(2000 + idx * 53).slice(-4)}`, email: `${first[0].toLowerCase()}.${first[1].toLowerCase()}@esempio.it`,
+      sposo2: corp || r() < 0.15 ? '' : `${second[0]} ${second[1]}`, tel2: r() < 0.5 ? `+39 347 ${String(5000 + idx * 41).slice(-4)} ${sl}${sl}` : '', email2: r() < 0.4 ? `${second[0].toLowerCase()}.${second[1].toLowerCase()}@esempio.it` : '',
+      planner: r() < 0.3 ? pick(['Wedding by Anna', 'Studio Eventi Torino', 'Sogni di Seta', 'WP Piemonte']) : '', provenienza: pick(['Passaparola', 'Instagram / social', 'Sito web', 'Wedding planner', 'Location', 'Open day / fiera']),
+      tipo, pasto: r() < 0.8 ? 'Cena' : 'Pranzo', rito: pick(['Civile', 'Religiosa', 'Rito simbolico']), data,
+      adulti: Math.round((corp ? 40 : 60) + r() * (corp ? 80 : 100)), bambini: r() < 0.5 ? Math.floor(r() * 14) : 0, neonati: r() < 0.25 ? Math.floor(1 + r() * 3) : 0, staff: r() < 0.5 ? Math.floor(1 + r() * 4) : 0,
+      budget: pick(['', '15.000 €', '20.000 €', '25.000 €', '30.000 €']), note: r() < 0.3 ? pick(['Vorrebbero un angolo con prodotti tipici della famiglia.', 'Ospiti anziani: prevedere sedute comode.', 'Parte degli ospiti arriva dall\'estero.', 'Cerimonia in giardino se il meteo lo permette.']) : '' });
+    // stato e anzianità del preventivo
+    const dd = new Date(data + 'T12:00:00');
+    let stato;
+    if (esito === 'P') stato = 'Concluso'; else if (esito === 'T') stato = 'Pronto';
+    else if (esito === 'N') stato = pick(['Allestimenti', 'Definizione menù', 'Definizione menù', 'Confermato']);
+    else if (esito === 'f') stato = r() < 0.58 ? pick(['Confermato', 'Confermato', 'Confermato', 'Definizione menù']) : 'Preventivo';
+    else stato = r() < 0.25 ? 'Confermato' : 'Preventivo';
+    if (idx === 33) stato = 'Annullato';
+    E.stato = stato;
+    if (isConfirmed(E)) used.add(data);
+    const maxCr = new Date(Math.min(today.getTime() - 3 * 864e5, dd.getTime() - 20 * 864e5)), cap = new Date(maxCr.getTime() - Math.floor(r() * 300) * 864e5);
+    E.creato = cap.toISOString();
+    if (isConfirmed(E)) E.q.firma = addDaysISO(isoOf(cap), 6 + Math.floor(r() * 20));
+    autoDates(E);
+    // menù e allestimenti a seconda dell'avanzamento
+    const C = catalogFor(E), prim = C.primi.flatMap(g => g.items), level = esito === 'F' ? (r() < 0.7 ? 0 : 1) : isConfirmed(E) ? (r() < 0.5 ? 3 : 2) : pick([0, 1, 2]);
+    const m = E.menu;
+    if (level >= 1) { m.show = pickN(C.isole.filter(i => i.tipo === 'show'), 3).map(i => i.id); m.passaggio = pickN(C.isole.filter(i => i.tipo === 'passaggio'), 2).map(i => i.id); m.cocktail = pick(C.buvette.cocktail); m.succo = pick(C.buvette.succhi); }
+    if (level >= 2) { m.entree = [pick(C.entree).id]; m.primi = [pick(prim).id]; m.secondi = [pick(C.secondi).id]; m.bianco = pick(C.vini.bianchi); m.rosso = pick(C.vini.rossi); m.dessert = pick(C.dessert).id; m.lounge = r() < 0.6 ? C.lounge.dolci.map(x => x.id) : pickN(C.lounge.dolci, 3).map(x => x.id); if (r() < 0.2) m.caffeAlt = pick(['Orzo', 'Dec', 'Ginseng']); }
+    if (level >= 2 && r() < 0.12) m.extraBuvette = [pick(C.buvette.extra.Bollicine)];
+    if (level >= 2 && r() < 0.1) m.show = pickN(C.isole.filter(i => i.tipo === 'show'), 4).map(i => i.id);   // 4ª isola: customizzazione
+    if (level >= 2 && r() < 0.1) m.extraVini = [pick(C.vini.extra.Rossi)];
+    if (level >= 3 || (level >= 2 && r() < 0.4)) C.allestimenti.forEach(g => g.voci.forEach(v => { if (!v.opts || !v.opts.length) return; const o = pick(v.opts.filter(x => !x.quota)); E.allest[v.id] = { opt: o.id, ok: level >= 3 && r() < 0.8 }; }));
+    // add-on
+    const A = S.settings.addons, setA = (id, on) => { const a = A.find(x => x.id === id); if (a && on) E.addons[id] = { on: true, variante: a.varianti ? pick(a.varianti).id : undefined }; };
+    setA('buv_ben', r() < 0.5); setA('cocktail', r() < 0.45); setA('salato', r() < 0.2); setA('confettata', r() < 0.18); setA('tisane', r() < 0.1); setA('sigar', r() < 0.07); setA('gelati', r() < 0.05);
+    if (E.addons.gelati) E.addons.gelati.prezzo = 650 + Math.round(r() * 5) * 100;
+    // richieste speciali / spazi personalizzati
+    if (r() < 0.2) { const t = pick([['isola', 'Isola live pasta', 'Show-cooking di pasta fresca con tre condimenti', 1200], ['dieta', 'Menù per celiaci', 'Alternativa senza glutine per 6 ospiti', 180], ['piatto', 'Piatto di famiglia', 'Lasagna della nonna come primo piatto', 0], ['altro', 'Angolo gelato', 'Carretto gelati artigianale per l\'aperitivo', 0]]); E.special.push({ id: uid(), kind: t[0], tipo: SP_KINDS.find(x => x[0] === t[0])[1], titolo: t[1], descr: t[2], porzioni: '', prezzoUnit: '', forfait: t[3] || '', stato: t[3] ? pick(['Quotato', 'Approvato']) : 'Da valutare', sezione: pick(['Aperitivo', 'A tavola', 'Dolci']) }); }
+    if (r() < 0.15 && E.q.spazi.length) E.q.spazi[0].a = pick(['Giardino', 'Terrazza panoramica', 'Chiesetta privata']);
+    if (r() < 0.07) E.econ.rettifiche.push({ desc: 'Sconto fedeltà', importo: -Math.round(200 + r() * 600) });
+    // elenco invitati per alcuni eventi confermati
+    if (['Confermato', 'Definizione menù', 'Allestimenti', 'Pronto'].includes(E.stato) && [11, 14, 22, 27].includes(idx)) demoGuests(E, r, pick);
+    // rate
+    E.pagAuto = true; syncPagamenti(E);
+    E.pagamenti.forEach((p, i) => { if (isConfirmed(E) && p.due && p.due < todayISO && !(idx === 8 && i === 1)) p.paid = true; if (E.stato === 'Concluso') p.paid = true; });
+    made.push(E);
+  });
+  S.events.unshift(...made); save(); return made.length;
+}
+function demoGuests(E, r, pick) {
+  const q = E.q, mk = (fascia, n) => { for (let i = 0; i < n; i++) { const g = newGuest({ nome: pick(r() < 0.5 ? NOMI_F : NOMI_M), cognome: pick(COGNOMI), fascia }); if (r() < 0.13) g.allergie = [pick(CAT.allergie).k]; if (r() < 0.08) g.intolleranze = [pick(CAT.intolleranze).k]; const x = r(); if (x < 0.06) g.dieta = 'Vegetariano'; else if (x < 0.09) g.dieta = 'Vegano'; else if (x < 0.1) g.dieta = 'Pescetariano'; if (fascia === 'Bambino' && r() < 0.3) g.seggiolone = true; E.guests.push(g); } };
+  mk('Adulto', +q.adulti || 0); mk('Bambino', +q.bambini || 0); mk('Neonato', +q.neonati || 0); mk('Staff', +q.staff || 0);
+  const seatable = E.guests.filter(g => g.fascia !== 'Neonato'); let t = null;
+  seatable.forEach((g, i) => { if (!t || t.seats.every(Boolean)) { t = newTable(E, 'tondo', 10); t.nome = `Tavolo ${E.tables.length + 1}`; E.tables.push(t); } t.seats[t.seats.indexOf(null)] = g.id; });
+}
+ACTIONS['demo-40'] = () => {
+  if (S.events.some(isDemo) && !confirm('Ci sono già eventi di esempio. Aggiungerne altri 40?')) return;
+  const n = generateDemoEvents(40); toast(`Creati ${n} eventi di esempio`); go('home'); rr();
+};
+ACTIONS['demo-clear'] = async () => {
+  const demo = S.events.filter(isDemo); if (!demo.length) return;
+  if (!confirm(`Eliminare i ${demo.length} eventi di esempio (e le location di esempio)?`)) return;
+  if (CLOUD) { for (const E of demo) if (!(await cloudDelete(E.id))) return; }
+  S.events = S.events.filter(e => !isDemo(e)); S.settings.locations = S.settings.locations.filter(l => !l.demo); save(); toast('Eventi di esempio eliminati'); go('home'); rr();
+};
+const demoCard = () => { const n = S.events.filter(isDemo).length; return `<div class="card" style="margin-top:16px"><h3>Dati dimostrativi</h3><p class="muted">Per mostrare le funzioni: 40 eventi bozza sparsi tra ${new Date().getFullYear()} e ${new Date().getFullYear() + 3}, con stati, menù, allestimenti, add-on, richieste speciali, rate e alcuni elenchi invitati.${n ? ` Al momento ci sono <b>${n}</b> eventi di esempio.` : ''}</p><div class="row"><button class="btn sand" data-act="demo-40">＋ Genera 40 eventi di esempio</button>${n ? `<button class="btn danger" data-act="demo-clear">Elimina gli eventi di esempio (${n})</button>` : ''}</div></div>`; };
