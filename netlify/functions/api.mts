@@ -2,6 +2,7 @@ import { getStore } from "@netlify/blobs";
 import { randomBytes } from "node:crypto";
 import type { Config } from "@netlify/functions";
 import { createApi } from "../lib/core.mjs";
+import seed from "../lib/demo-seed.json";
 
 const stores = (name: string) => getStore({ name, consistency: "strong" });
 
@@ -21,7 +22,7 @@ async function getSecret(): Promise<string> {
   return (cached = s as string);
 }
 
-export default async (req: Request) => createApi({ secret: await getSecret(), stores })(req);
+export default async (req: Request) => createApi({ secret: await getSecret(), stores, seed })(req);
 
 export const config: Config = {
   path: "/api/*",

@@ -21,7 +21,7 @@ function hashPw(password, salt = randomBytes(16).toString('hex')) { return { sal
 function checkPw(password, u) { const h = scryptSync(password, u.salt, 64); const b = Buffer.from(u.hash, 'hex'); return h.length === b.length && timingSafeEqual(h, b); }
 const publicUser = u => ({ email: u.email, role: u.role, approved: !!u.approved, created: u.created });
 
-export function createApi({ stores, secret, now = () => new Date().toISOString() }) {
+export function createApi({ stores, secret, seed = null, now = () => new Date().toISOString() }) {
   const users = stores('users'), events = stores('events'), meta = stores('meta');
 
   /* indice {events:{id:{rev,at,by}}, settings:{rev,at,by}|null} con scrittura condizionale */
@@ -36,6 +36,18 @@ export function createApi({ stores, secret, now = () => new Date().toISOString()
     throw new Error('Indice occupato, riprova');
   }
   const getIndex = async () => (await meta.get('index', { type: 'json' })) || { events: {}, settings: null };
+
+  /* al primo avvio (database vuoto, primo amministratore) crea i dati dimostrativi: eventi e location di esempio */
+  async function seedDemo() {
+    if (!seed || await meta.get('seeded', { type: 'json' })) return;
+    const at = now(), idx = { events: {}, settings: { rev: 1, at, by: 'demo' } };
+    for (let i = 0; i < seed.events.length; i += 10) {
+      await Promise.all(seed.events.slice(i, i + 10).map(async ev => { await events.setJSON(ev.id, ev, { metadata: { rev: 1, by: 'demo', at }, onlyIfNew: true }); idx.events[ev.id] = { rev: 1, at, by: 'demo' }; }));
+    }
+    await meta.setJSON('settings', seed.settings, { metadata: { rev: 1, by: 'demo', at }, onlyIfNew: true });
+    await meta.setJSON('index', idx, { onlyIfNew: true });
+    await meta.setJSON('seeded', { at });
+  }
 
   async function authUser(req) {
     const h = req.headers.get('authorization') || '';
@@ -56,6 +68,7 @@ export function createApi({ stores, secret, now = () => new Date().toISOString()
       const rec = { email, ...hashPw(password), role: first ? 'admin' : 'staff', approved: first, created: now() };
       const r = await users.setJSON(email, rec, { onlyIfNew: true });
       if (!r.modified) return err(409, 'Indirizzo già registrato: usa «Accedi».');
+      if (first) await seedDemo();
       return out({ token: makeToken(secret, email), user: publicUser(rec), firstAdmin: first });
     }
     if (path === 'login' && method === 'POST') {

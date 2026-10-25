@@ -6,6 +6,7 @@ import { readFile } from 'node:fs/promises';
 import { extname, join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createApi } from '../netlify/lib/core.mjs';
+import { readFileSync } from 'node:fs';
 
 const root = join(fileURLToPath(import.meta.url), '..', '..');
 const mem = {}; let n = 0;
@@ -14,7 +15,8 @@ const stores = name => { const m = (mem[name] ||= new Map()); return {
   async getWithMetadata(k) { const e = m.get(k); return e ? { data: structuredClone(e.v), etag: e.etag, metadata: e.meta } : null; },
   async setJSON(k, v, o = {}) { const e = m.get(k); if (o.onlyIfNew && e) return { modified: false }; if (o.onlyIfMatch && (!e || e.etag !== o.onlyIfMatch)) return { modified: false }; const etag = 'e' + (++n); m.set(k, { v: structuredClone(v), etag, meta: o.metadata }); return { modified: true, etag }; },
   async delete(k) { m.delete(k); }, async list() { return { blobs: [...m.keys()].map(key => ({ key })) }; } }; };
-const api = createApi({ stores, secret: process.env.LASTELLA_SECRET || 'dev-secret' });
+const seed = JSON.parse(readFileSync(join(root, 'netlify/lib/demo-seed.json'), 'utf8'));
+const api = createApi({ stores, secret: process.env.LASTELLA_SECRET || 'dev-secret', seed });
 const types = { '.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/javascript', '.css': 'text/css', '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', '.json': 'application/json' };
 
 http.createServer(async (req, res) => {

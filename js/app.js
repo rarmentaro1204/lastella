@@ -195,4 +195,9 @@ ACTIONS['del-event'] = async (el, ev) => {
 
 /* ---------------------------------------------------------------- boot */
 ACTIONS['upload-local'] = () => uploadLocalOnly();
-async function boot() { window.addEventListener('hashchange', () => render()); render(); await cloudInit(); render(); }
+async function boot() {
+  window.addEventListener('hashchange', () => render()); render(); await cloudInit();
+  // modalità locale: al primo avvio mostra subito gli eventi di esempio
+  if (!CLOUD && !S.events.length && !S.demoSeeded) { try { await loadDemoSeed(); S.demoSeeded = true; save(); } catch (e) { console.warn('dati dimostrativi non caricati', e); } }
+  render();
+}
