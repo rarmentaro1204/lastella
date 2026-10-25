@@ -1,0 +1,10 @@
+{
+  "name": "lastella-gestionale",
+  "private": true,
+  "type": "module",
+  "version": "1.0.0",
+  "dependencies": {
+    "@netlify/blobs": "^11.1.6",
+    "@netlify/functions": "^6.0.3"
+  }
+}

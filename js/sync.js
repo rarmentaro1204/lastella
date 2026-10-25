@@ -1,18 +1,27 @@
 /* =====================================================================
-   Cloud: autenticazione + sincronizzazione eventi su Supabase
-   - un record per evento (jsonb) con revisione ottimistica
+   Cloud: autenticazione + sincronizzazione eventi con la funzione Netlify /api
+   - un record per evento con revisione ottimistica
    - se due colleghi modificano lo stesso evento, i conflitti si risolvono
      per sezione (questionario, invitati, tavoli, menù…): vince chi ha toccato la sezione
-   - aggiornamenti dei colleghi in tempo reale
+   - aggiornamenti dei colleghi ogni pochi secondi (polling dell'indice)
    ===================================================================== */
 const CFG = window.LASTELLA_CONFIG || {};
-const CLOUD = !!(CFG.url && CFG.key && window.supabase);
-const AUTH = { status: CLOUD ? 'loading' : 'local', user: null, admin: false, msg: '', mode: 'login', team: [], localOnly: [] };
+const CLOUD = !!CFG.api;
+const AUTH = { status: CLOUD ? 'loading' : 'local', user: null, admin: false, msg: '', mode: 'login', team: [], localOnly: [], sync: { state: 'ok' } };
 const BASE = {}, REV = {};           // ultimo stato noto sul server (json string) e revisione, per evento
-let SBASE = null, SREV = null, sb = null, pushTimer = null, pushing = false, again = false, pendingRender = false;
+const TOKEN_KEY = 'lastella-token', POLL_MS = 5000;
+let SBASE = null, SREV = 0, pushTimer = null, pushing = false, again = false, pendingRender = false, pollTimer = null;
 const ME = uid();
-const meLabel = () => (AUTH.user ? AUTH.user.email : '') + '#' + ME;
-const shortUser = u => (u || '').split('#')[0];
+const meLabel = () => (AUTH.user ? AUTH.user.email : '');
+const shortUser = u => (u || '').split('@')[0];
+const getToken = () => { try { return localStorage.getItem(TOKEN_KEY) || ''; } catch { return ''; } };
+const setToken = t => { try { t ? localStorage.setItem(TOKEN_KEY, t) : localStorage.removeItem(TOKEN_KEY); } catch {} };
+
+async function http(method, path, body) {
+  const r = await fetch(CFG.api + '/' + path, { method, headers: { 'content-type': 'application/json', ...(getToken() ? { authorization: 'Bearer ' + getToken() } : {}) }, body: body === undefined ? undefined : JSON.stringify(body) });
+  let j = {}; try { j = await r.json(); } catch {}
+  return { status: r.status, ok: r.ok, body: j };
+}
 
 function setSync(state, msg) {
   AUTH.sync = { state, msg };
@@ -30,66 +39,50 @@ function syncHtml() {
 /* ---------------------------------------------------------------- init & login */
 async function cloudInit() {
   if (!CLOUD) return;
-  sb = window.supabase.createClient(CFG.url, CFG.key, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true } });
-  sb.auth.onAuthStateChange((ev, sess) => {
-    if (ev === 'PASSWORD_RECOVERY') { AUTH.status = 'recovery'; render(); }
-    else if (ev === 'SIGNED_OUT' && AUTH.status !== 'signedout') { resetLocalCache(); AUTH.status = 'signedout'; AUTH.user = null; render(); }
-  });
-  const { data: { session } } = await sb.auth.getSession();
-  if (AUTH.status === 'recovery') return;
-  if (!session) { AUTH.status = 'signedout'; return; }
-  await afterLogin(session.user);
+  if (!getToken()) { AUTH.status = 'signedout'; return; }
+  try {
+    const r = await http('GET', 'me');
+    if (r.status === 401) { setToken(''); AUTH.status = 'signedout'; return; }
+    if (!r.ok) throw new Error(r.body.error || 'Errore ' + r.status);
+    await afterLogin(r.body.user);
+  } catch (e) { AUTH.status = 'signedout'; AUTH.msg = 'Impossibile contattare il server: ' + (e.message || e); }
 }
 async function afterLogin(user) {
-  AUTH.user = user; AUTH.msg = '';
-  try {
-    let { data: ok, error } = await sb.rpc('lastella_is_member');
-    if (error) throw error;
-    if (!ok) { const { data: claimed } = await sb.rpc('lastella_claim_admin'); ok = !!claimed; }
-    if (!ok) { AUTH.status = 'pending'; return; }
-    AUTH.admin = !!(await sb.rpc('lastella_is_admin')).data;
-    await cloudLoad(); subscribeRealtime();
-    AUTH.status = 'ready'; setSync('ok');
-  } catch (e) { AUTH.status = 'signedout'; AUTH.msg = 'Errore di connessione: ' + (e.message || e); }
+  AUTH.user = user; AUTH.admin = user.role === 'admin'; AUTH.msg = '';
+  if (!user.approved) { AUTH.status = 'pending'; return; }
+  try { await cloudLoad(); startPolling(); AUTH.status = 'ready'; setSync('ok'); }
+  catch (e) {
+    if (e.pending) { AUTH.status = 'pending'; return; }
+    AUTH.status = 'signedout'; AUTH.msg = 'Errore di connessione: ' + (e.message || e);
+  }
 }
-function resetLocalCache() { try { localStorage.removeItem(KEY); } catch {} S.events = []; S.settings = defaultSettings(); for (const k in BASE) delete BASE[k]; for (const k in REV) delete REV[k]; if (sb) sb.removeAllChannels(); }
+function resetLocalCache() { try { localStorage.removeItem(KEY); } catch {} S.events = []; S.settings = defaultSettings(); for (const k in BASE) delete BASE[k]; for (const k in REV) delete REV[k]; SBASE = null; SREV = 0; clearInterval(pollTimer); }
 
 async function authSubmit(mode, email, password) {
   AUTH.msg = '';
   try {
-    if (mode === 'login') {
-      const { data, error } = await sb.auth.signInWithPassword({ email, password });
-      if (error) throw error; await afterLogin(data.user);
-    } else if (mode === 'signup') {
-      const { data, error } = await sb.auth.signUp({ email, password, options: { emailRedirectTo: location.origin + location.pathname } });
-      if (error) throw error;
-      if (data.session) await afterLogin(data.user);
-      else AUTH.msg = 'ok:Registrazione inviata. Controlla la posta e clicca il link di conferma, poi accedi.';
-    } else if (mode === 'reset') {
-      const { error } = await sb.auth.resetPasswordForEmail(email, { redirectTo: location.origin + location.pathname });
-      if (error) throw error; AUTH.msg = 'ok:Se l\'indirizzo è registrato riceverai un\'email con il link per scegliere una nuova password.';
-    } else if (mode === 'recovery') {
-      const { error } = await sb.auth.updateUser({ password }); if (error) throw error;
-      const { data: { user } } = await sb.auth.getUser(); await afterLogin(user);
+    if (mode === 'login' || mode === 'signup') {
+      const r = await http('POST', mode, { email, password });
+      if (!r.ok) throw new Error(r.body.error || 'Errore ' + r.status);
+      setToken(r.body.token); await afterLogin(r.body.user);
     }
-  } catch (e) {
-    const m = e.message || String(e);
-    AUTH.msg = /Invalid login/i.test(m) ? 'Email o password non corretti.' : /not confirmed/i.test(m) ? 'Email non ancora confermata: apri il link ricevuto per posta.' : /already registered/i.test(m) ? 'Indirizzo già registrato: usa «Accedi».' : /Password should/i.test(m) ? 'La password deve avere almeno 6 caratteri.' : m;
-  }
+  } catch (e) { AUTH.msg = e.message || String(e); }
   render();
 }
-async function signOut() { resetLocalCache(); AUTH.status = 'signedout'; AUTH.user = null; AUTH.admin = false; await sb.auth.signOut(); render(); }
+async function signOut() { resetLocalCache(); setToken(''); AUTH.status = 'signedout'; AUTH.user = null; AUTH.admin = false; render(); }
 
 /* ---------------------------------------------------------------- caricamento */
 async function cloudLoad() {
-  const [ev, st, tm] = await Promise.all([sb.from('lastella_events').select('*'), sb.from('lastella_settings').select('*').maybeSingle(), sb.from('lastella_members').select('*').order('added_at')]);
-  if (ev.error) throw ev.error;
+  const [st, tm] = await Promise.all([http('GET', 'state'), http('GET', 'team')]);
+  if (st.status === 403 && st.body.pending) { const e = new Error('pending'); e.pending = true; throw e; }
+  if (st.status === 401) { setToken(''); throw new Error('Sessione scaduta'); }
+  if (!st.ok) throw new Error(st.body.error || 'Errore ' + st.status);
   const local = S.events.slice();                   // eventuali eventi creati prima del cloud (stesso browser)
-  S.events = ev.data.map(r => { const h = hydrate(r.data); BASE[r.id] = JSON.stringify(h); REV[r.id] = r.rev; return h; });
+  S.events = st.body.events.map(r => { const h = hydrate(r.data); BASE[r.id] = JSON.stringify(h); REV[r.id] = r.rev; return h; });
   AUTH.localOnly = local.filter(e => !(e.id in REV));
-  if (st.data) { S.settings = Object.assign(defaultSettings(), st.data.data); SBASE = JSON.stringify(S.settings); SREV = st.data.rev; }
-  else { SBASE = null; SREV = null; }
-  AUTH.team = tm.data || [];
+  if (st.body.settings && st.body.settings.data) { S.settings = Object.assign(defaultSettings(), st.body.settings.data); SBASE = JSON.stringify(S.settings); SREV = st.body.settings.rev; }
+  else { SBASE = null; SREV = 0; }
+  AUTH.team = tm.ok ? tm.body.team : [];
   try { localStorage.setItem(KEY, JSON.stringify(S)); } catch {}
 }
 
@@ -106,83 +99,77 @@ async function doPush() {
     const sj = JSON.stringify(S.settings);
     if (SBASE !== sj) { if (!touched) setSync('saving'); touched = true; await pushSettings(); }
     setSync('ok');
-  } catch (e) { setSync(navigator.onLine ? 'error' : 'offline', e.message); console.warn('sync', e); setTimeout(cloudPush, 8000); }
-  finally { pushing = false; if (again) { again = false; doPush(); } }
+  } catch (e) {
+    if (e.auth) { setToken(''); AUTH.status = 'signedout'; AUTH.msg = 'Sessione scaduta: accedi di nuovo.'; render(); }
+    else { setSync(navigator.onLine ? 'error' : 'offline', e.message); console.warn('sync', e); setTimeout(cloudPush, 8000); }
+  } finally { pushing = false; if (again) { again = false; doPush(); } }
 }
 const topMerge = (base, local, remote) => { const out = {}; for (const k of new Set([...Object.keys(remote), ...Object.keys(local)])) out[k] = JSON.stringify(local[k]) !== JSON.stringify(base[k]) ? local[k] : remote[k]; return out; };
+function check(r) { if (r.status === 401) { const e = new Error('Sessione scaduta'); e.auth = true; throw e; } if (!r.ok && r.status !== 409 && r.status !== 404) throw new Error(r.body.error || 'Errore ' + r.status); return r; }
 async function pushEvent(id, tries = 0) {
   const E = S.events.find(e => e.id === id); if (!E) return;
   const js = JSON.stringify(E);
-  if (REV[id] === undefined) {
-    const { error } = await sb.from('lastella_events').insert({ id, data: E, rev: 1, updated_by: meLabel() });
-    if (!error) { REV[id] = 1; BASE[id] = js; return; }
-    if (error.code !== '23505') throw error;
-    const { data: row } = await sb.from('lastella_events').select('*').eq('id', id).maybeSingle(); if (!row) throw error;
-    REV[id] = row.rev; BASE[id] = '{}';                       // già esiste: proseguiamo come aggiornamento con merge
-    return pushEvent(id, tries + 1);
-  }
-  const { data, error } = await sb.from('lastella_events').update({ data: E, rev: REV[id] + 1, updated_at: new Date().toISOString(), updated_by: meLabel() }).eq('id', id).eq('rev', REV[id]).select('rev');
-  if (error) throw error;
-  if (data.length) { REV[id] = data[0].rev; BASE[id] = js; return; }
+  const r = check(await http('PUT', 'event/' + id, { rev: REV[id] || 0, data: E }));
+  if (r.ok) { REV[id] = r.body.rev; BASE[id] = js; return; }
+  if (r.status === 404 && r.body.deleted) { S.events = S.events.filter(e => e.id !== id); delete REV[id]; delete BASE[id]; toast('L\'evento è stato eliminato da un collega'); scheduleRender(); return; }
   // conflitto: un collega ha salvato nel frattempo
-  const { data: row, error: e2 } = await sb.from('lastella_events').select('*').eq('id', id).maybeSingle();
-  if (e2) throw e2;
-  if (!row) { S.events = S.events.filter(e => e.id !== id); delete REV[id]; delete BASE[id]; toast('L\'evento è stato eliminato da un collega'); scheduleRender(); return; }
-  if (tries > 4) throw new Error('Conflitto non risolvibile, riprova');
-  const remote = hydrate(row.data), merged = hydrate(topMerge(JSON.parse(BASE[id] || '{}'), E, remote));
+  if (tries > 4 || !r.body.current) throw new Error('Conflitto non risolvibile, riprova');
+  const row = r.body.current, remote = hydrate(row.data), merged = hydrate(topMerge(JSON.parse(BASE[id] || '{}'), E, remote));
   S.events[S.events.findIndex(e => e.id === id)] = merged;
   REV[id] = row.rev; BASE[id] = JSON.stringify(remote);
-  toast(`Modifiche unite a quelle di ${shortUser(row.updated_by) || 'un collega'}`); scheduleRender();
+  toast(`Modifiche unite a quelle di ${shortUser(row.by) || 'un collega'}`); scheduleRender();
   return pushEvent(id, tries + 1);
 }
 async function pushSettings(tries = 0) {
   const js = JSON.stringify(S.settings);
-  if (SREV === null) {
-    const { error } = await sb.from('lastella_settings').insert({ id: 1, data: S.settings, rev: 1, updated_by: meLabel() });
-    if (!error) { SREV = 1; SBASE = js; return; }
-    const { data: row } = await sb.from('lastella_settings').select('*').eq('id', 1).maybeSingle(); if (!row) throw error;
-    SREV = row.rev; SBASE = '{}'; return pushSettings(tries + 1);
-  }
-  const { data, error } = await sb.from('lastella_settings').update({ data: S.settings, rev: SREV + 1, updated_at: new Date().toISOString(), updated_by: meLabel() }).eq('id', 1).eq('rev', SREV).select('rev');
-  if (error) throw error;
-  if (data.length) { SREV = data[0].rev; SBASE = js; return; }
-  const { data: row } = await sb.from('lastella_settings').select('*').eq('id', 1).maybeSingle();
-  if (tries > 4 || !row) throw new Error('Conflitto impostazioni');
-  S.settings = Object.assign(defaultSettings(), topMerge(JSON.parse(SBASE || '{}'), S.settings, row.data)); SREV = row.rev; SBASE = JSON.stringify(row.data);
+  const r = check(await http('PUT', 'settings', { rev: SREV, data: S.settings }));
+  if (r.ok) { SREV = r.body.rev; SBASE = js; return; }
+  if (tries > 4 || !r.body.current) throw new Error('Conflitto impostazioni');
+  const cur = r.body.current;
+  S.settings = Object.assign(defaultSettings(), cur.data ? topMerge(JSON.parse(SBASE || '{}'), S.settings, cur.data) : S.settings); SREV = cur.rev; SBASE = JSON.stringify(cur.data || {});
   return pushSettings(tries + 1);
 }
 async function cloudDelete(id) {
-  const { data, error } = await sb.from('lastella_events').delete().eq('id', id).select('id');
-  if (error || !data.length) { toast('Solo un amministratore può eliminare gli eventi'); return false; }
+  const r = await http('DELETE', 'event/' + id);
+  if (!r.ok) { toast(r.body.error || 'Eliminazione non riuscita'); return false; }
   delete REV[id]; delete BASE[id]; return true;
 }
 async function uploadLocalOnly() {
   S.events.push(...AUTH.localOnly); AUTH.localOnly = []; save(); await doPush(); render(); toast('Eventi caricati nel cloud');
 }
 
-/* ---------------------------------------------------------------- realtime */
-function subscribeRealtime() {
-  sb.channel('lastella-live')
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'lastella_events' }, p => {
-      if (p.eventType === 'DELETE') {
-        const id = p.old.id; if (!S.events.some(e => e.id === id)) return;
-        S.events = S.events.filter(e => e.id !== id); delete REV[id]; delete BASE[id];
-        if (ROUTE.view === 'event' && ROUTE.id === id) { toast('Evento eliminato da un collega'); location.hash = '#/home'; } scheduleRender(); return;
-      }
-      const row = p.new; if (row.rev <= (REV[row.id] ?? 0)) return;
-      applyRemote(row);
-    })
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'lastella_settings' }, p => {
-      const row = p.new; if (!row || row.rev <= (SREV ?? 0)) return;
-      const dirty = SBASE !== null && JSON.stringify(S.settings) !== SBASE;
-      S.settings = Object.assign(defaultSettings(), dirty ? topMerge(JSON.parse(SBASE), S.settings, row.data) : row.data); SREV = row.rev; SBASE = JSON.stringify(row.data); if (dirty) cloudPush(); scheduleRender();
-    })
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'lastella_members' }, async () => { const { data } = await sb.from('lastella_members').select('*').order('added_at'); AUTH.team = data || []; if (ROUTE.view === 'settings') scheduleRender(); })
-    .subscribe(st => { if (st === 'SUBSCRIBED') setSync('ok'); else if (st === 'CHANNEL_ERROR' || st === 'TIMED_OUT') setSync('error', 'Connessione in tempo reale interrotta'); });
-  window.addEventListener('online', () => { cloudLoadMerge(); });
+/* ---------------------------------------------------------------- aggiornamenti dei colleghi (polling) */
+function startPolling() {
+  clearInterval(pollTimer);
+  pollTimer = setInterval(() => { if (document.visibilityState === 'visible' && AUTH.status === 'ready') poll(); }, POLL_MS);
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && AUTH.status === 'ready') poll(); });
+  window.addEventListener('online', () => { poll(); cloudPush(); });
 }
-async function cloudLoadMerge() { try { const { data } = await sb.from('lastella_events').select('*'); (data || []).forEach(r => { if (r.rev > (REV[r.id] ?? 0)) applyRemote(r, true); }); cloudPush(); } catch {} }
-function applyRemote(row, silent) {
+let polling = false;
+async function poll() {
+  if (polling || pushing) return; polling = true;
+  try {
+    const r = await http('GET', 'index'); if (r.status === 401) { setToken(''); AUTH.status = 'signedout'; AUTH.msg = 'Sessione scaduta: accedi di nuovo.'; render(); return; }
+    if (!r.ok) throw new Error(r.body.error || 'Errore ' + r.status);
+    const idx = r.body;
+    // eliminati
+    for (const e of S.events.slice()) if (REV[e.id] !== undefined && !(e.id in idx.events)) {
+      S.events = S.events.filter(x => x.id !== e.id); delete REV[e.id]; delete BASE[e.id];
+      if (ROUTE.view === 'event' && ROUTE.id === e.id) { toast('Evento eliminato da un collega'); location.hash = '#/home'; } scheduleRender();
+    }
+    // nuovi / modificati
+    for (const [id, m] of Object.entries(idx.events)) if (m.rev > (REV[id] ?? 0)) { const g = await http('GET', 'event/' + id); if (g.ok) applyRemote({ id, rev: g.body.rev, data: g.body.data, updated_by: g.body.by }); }
+    // impostazioni
+    if (idx.settings && idx.settings.rev > SREV) {
+      const g = await http('GET', 'settings');
+      if (g.ok && g.body.data) { const dirty = SBASE !== null && JSON.stringify(S.settings) !== SBASE; S.settings = Object.assign(defaultSettings(), dirty ? topMerge(JSON.parse(SBASE), S.settings, g.body.data) : g.body.data); SREV = g.body.rev; SBASE = JSON.stringify(g.body.data); if (dirty) cloudPush(); scheduleRender(); }
+    }
+    if (ROUTE.view === 'settings') syncTeam();
+    if (AUTH.sync.state === 'offline' || AUTH.sync.state === 'error') setSync('ok');
+  } catch (e) { setSync(navigator.onLine ? 'error' : 'offline', e.message); }
+  finally { polling = false; }
+}
+function applyRemote(row) {
   const remote = hydrate(row.data), idx = S.events.findIndex(e => e.id === row.id), local = S.events[idx];
   let next = remote;
   if (local && BASE[row.id] !== undefined && JSON.stringify(local) !== BASE[row.id]) next = hydrate(topMerge(JSON.parse(BASE[row.id]), local, remote));
@@ -190,7 +177,7 @@ function applyRemote(row, silent) {
   REV[row.id] = row.rev; BASE[row.id] = JSON.stringify(remote);
   try { localStorage.setItem(KEY, JSON.stringify(S)); } catch {}
   if (next !== remote) cloudPush();
-  if (!silent && shortUser(row.updated_by) && row.updated_by !== meLabel()) { const evName_ = [remote.q.sposo1, remote.q.sposo2].filter(Boolean).join(' & ') || 'un evento'; toast(`${shortUser(row.updated_by)} ha aggiornato «${evName_}»`); }
+  if (row.updated_by && row.updated_by !== meLabel()) { const nm = [remote.q.sposo1, remote.q.sposo2].filter(Boolean).join(' & ') || 'un evento'; toast(`${shortUser(row.updated_by)} ha aggiornato «${nm}»`); }
   scheduleRender();
 }
 /* ridisegna solo se l'utente non sta scrivendo */
@@ -207,16 +194,14 @@ function viewAuth() {
   const msg = txt ? `<div class="alert ${ok ? 'ok' : 'bad'}" style="margin-bottom:14px">${esc(txt)}</div>` : '';
   const head = '<div class="authbox"><div class="authlogo"><b>LA STELLA</b><i>NEW CONCEPT BANQUETING</i></div>';
   if (st === 'loading') return head + '<p class="muted" style="text-align:center">Connessione in corso…</p></div>';
-  if (st === 'pending') return head + `<h3>Accesso in attesa</h3><p>Hai effettuato l'accesso come <b>${esc(AUTH.user.email)}</b>, ma questo indirizzo non è ancora abilitato.</p><p class="muted">Chiedi a un amministratore di La Stella di aggiungerlo dalla sezione <i>Impostazioni → Team</i>, poi premi «Ricontrolla».</p>
+  if (st === 'pending') return head + `<h3>Accesso in attesa</h3><p>Hai effettuato l'accesso come <b>${esc(AUTH.user.email)}</b>, ma l'account non è ancora stato approvato.</p><p class="muted">Chiedi a un amministratore di La Stella di approvarlo da <i>Impostazioni → Team</i>, poi premi «Ricontrolla».</p>
     <div class="row" style="margin-top:16px"><button class="btn" data-act="auth-recheck">Ricontrolla</button><button class="btn alt" data-act="signout">Esci</button></div></div>`;
-  if (st === 'recovery') return head + `<h3>Nuova password</h3>${msg}<form id="authf" data-mode="recovery"><div class="field"><label>Scegli la nuova password</label><input type="password" name="password" minlength="6" required autocomplete="new-password"></div><div class="acts"><button class="btn">Salva e accedi</button></div></form></div>`;
   const mode = AUTH.mode;
   return head + `<div class="tabs" style="margin:0 0 18px;justify-content:center"><a href="javascript:void 0" data-act="auth-mode" data-v="login" class="${mode === 'login' ? 'on' : ''}">Accedi</a><a href="javascript:void 0" data-act="auth-mode" data-v="signup" class="${mode === 'signup' ? 'on' : ''}">Registrati</a></div>${msg}
     <form id="authf" data-mode="${mode}"><div class="col" style="gap:14px"><div class="field"><label>Email</label><input type="email" name="email" required autocomplete="email"></div>
-    ${mode === 'reset' ? '' : `<div class="field"><label>Password</label><input type="password" name="password" minlength="6" required autocomplete="${mode === 'signup' ? 'new-password' : 'current-password'}"></div>`}
-    <button class="btn" style="justify-content:center">${mode === 'login' ? 'Accedi' : mode === 'signup' ? 'Crea account' : 'Invia link'}</button></div></form>
-    <p class="small muted" style="text-align:center;margin-top:16px">${mode === 'reset' ? '<a href="javascript:void 0" data-act="auth-mode" data-v="login">Torna all\'accesso</a>' : '<a href="javascript:void 0" data-act="auth-mode" data-v="reset">Password dimenticata?</a>'}</p>
-    <p class="small muted" style="text-align:center">Dopo la registrazione un amministratore deve abilitare il tuo indirizzo. Il primo utente registrato diventa amministratore.</p></div>`;
+    <div class="field"><label>Password${mode === 'signup' ? ' (almeno 8 caratteri)' : ''}</label><input type="password" name="password" minlength="${mode === 'signup' ? 8 : 1}" required autocomplete="${mode === 'signup' ? 'new-password' : 'current-password'}"></div>
+    <button class="btn" style="justify-content:center">${mode === 'login' ? 'Accedi' : 'Crea account'}</button></div></form>
+    <p class="small muted" style="text-align:center;margin-top:16px">${mode === 'signup' ? 'Dopo la registrazione un amministratore deve approvare il tuo account. Il primo utente registrato diventa amministratore.' : 'Password dimenticata? Chiedi a un amministratore di reimpostarla da Impostazioni → Team.'}</p></div>`;
 }
 document.addEventListener('submit', e => {
   if (e.target.id !== 'authf') return; e.preventDefault();
@@ -224,25 +209,38 @@ document.addEventListener('submit', e => {
 });
 ACTIONS['auth-mode'] = el => { AUTH.mode = el.dataset.v; AUTH.msg = ''; render(); };
 ACTIONS.signout = () => signOut();
-ACTIONS['auth-recheck'] = async () => { await afterLogin(AUTH.user); render(); };
+ACTIONS['auth-recheck'] = async () => { const r = await http('GET', 'me'); if (r.ok) await afterLogin(r.body.user); else if (r.status === 401) { setToken(''); AUTH.status = 'signedout'; } render(); };
 
+let teamBusy = false;
+async function syncTeam() { if (teamBusy || AUTH.status !== 'ready') return; teamBusy = true; const before = JSON.stringify(AUTH.team); try { await refreshTeam(); if (JSON.stringify(AUTH.team) !== before && ROUTE.view === 'settings') scheduleRender(); } finally { teamBusy = false; } }
+async function refreshTeam() { const r = await http('GET', 'team'); if (r.ok) AUTH.team = r.body.team; }
 function teamCard() {
-  if (!CLOUD) return `<div class="card"><h3>Team</h3><p class="muted">Modalità locale: i dati restano su questo browser. Configura Supabase in <code>js/config.js</code> per lavorare in più persone sugli stessi eventi.</p></div>`;
-  const rows = AUTH.team.map(m => `<tr><td>${esc(m.email)}${m.email === (AUTH.user.email || '').toLowerCase() ? ' <span class="pill">tu</span>' : ''}</td><td>${m.role === 'admin' ? 'Amministratore' : 'Operatore'}</td><td class="num">${AUTH.admin && m.email !== (AUTH.user.email || '').toLowerCase() ? `<button class="btn ghost sm" data-act="team-del" data-e="${esc(m.email)}">Rimuovi</button>` : ''}</td></tr>`).join('');
-  return `<div class="card"><h3>Team</h3><p class="muted">Accesso come <b>${esc(AUTH.user.email)}</b> (${AUTH.admin ? 'amministratore' : 'operatore'}). Tutti gli abilitati vedono e modificano gli stessi eventi, con aggiornamenti in tempo reale.</p>
-    <table class="tb"><thead><tr><th>Email</th><th>Ruolo</th><th></th></tr></thead><tbody>${rows}</tbody></table>
-    ${AUTH.admin ? `<form id="teamf" class="row" style="margin-top:14px"><input type="email" name="email" placeholder="email del collega (deve registrarsi con questo indirizzo)" required style="max-width:380px"><select name="role" style="width:auto"><option value="staff">Operatore</option><option value="admin">Amministratore</option></select><button class="btn">＋ Abilita</button></form><p class="hint">Gli operatori possono creare e modificare eventi; solo gli amministratori eliminano eventi e gestiscono il team.</p>` : '<p class="hint">Solo gli amministratori possono abilitare nuovi colleghi.</p>'}
-    <div class="row" style="margin-top:12px"><button class="btn alt" data-act="signout">Esci dall'account</button></div></div>`;
+  if (!CLOUD) return `<div class="card"><h3>Team</h3><p class="muted">Modalità locale: i dati restano su questo browser. Pubblicato su Netlify, il gestionale permette di lavorare in più persone sugli stessi eventi.</p></div>`;
+  const rows = AUTH.team.map(m => { const you = m.email === AUTH.user.email; return `<tr><td>${esc(m.email)}${you ? ' <span class="pill">tu</span>' : ''}</td>
+    <td>${m.approved ? (m.role === 'admin' ? 'Amministratore' : 'Operatore') : '<span class="pill warn">in attesa di approvazione</span>'}</td>
+    <td class="num">${AUTH.admin && !you ? `${!m.approved ? `<button class="btn sm" data-act="team-act" data-a="approve" data-e="${esc(m.email)}">Approva</button> ` : `<button class="btn sm alt" data-act="team-act" data-a="role" data-e="${esc(m.email)}" data-r="${m.role === 'admin' ? 'staff' : 'admin'}">${m.role === 'admin' ? 'Rendi operatore' : 'Rendi admin'}</button> `}<button class="btn sm alt" data-act="team-reset" data-e="${esc(m.email)}">Nuova password</button> <button class="btn ghost sm" data-act="team-act" data-a="remove" data-e="${esc(m.email)}">Rimuovi</button>` : ''}</td></tr>`; }).join('');
+  return `<div class="card"><h3>Team</h3><p class="muted">Accesso come <b>${esc(AUTH.user.email)}</b> (${AUTH.admin ? 'amministratore' : 'operatore'}). Tutti gli approvati vedono e modificano gli stessi eventi; gli aggiornamenti dei colleghi arrivano in pochi secondi.</p>
+    <table class="tb"><thead><tr><th>Email</th><th>Stato</th><th></th></tr></thead><tbody>${rows}</tbody></table>
+    ${AUTH.admin ? `<h4 style="margin:18px 0 8px">Aggiungi un collega</h4><form id="teamf" class="row"><input type="email" name="email" placeholder="email" required style="max-width:260px"><input type="text" name="password" placeholder="password provvisoria (min. 8)" minlength="8" required style="max-width:260px"><select name="role" style="width:auto"><option value="staff">Operatore</option><option value="admin">Amministratore</option></select><button class="btn">＋ Crea account</button></form><p class="hint">Comunica la password provvisoria al collega: potrà cambiarla da qui sotto. In alternativa può registrarsi da solo e tu lo approvi dalla lista.</p>` : '<p class="hint">Solo gli amministratori possono approvare colleghi e gestire il team.</p>'}
+    <div class="row" style="margin-top:14px"><button class="btn alt" data-act="pw-change">Cambia la mia password</button><button class="btn alt" data-act="signout">Esci dall'account</button></div></div>`;
 }
 document.addEventListener('submit', async e => {
   if (e.target.id !== 'teamf') return; e.preventDefault();
-  const fd = new FormData(e.target), email = fd.get('email').toString().trim().toLowerCase();
-  const { error } = await sb.from('lastella_members').insert({ email, role: fd.get('role'), added_by: AUTH.user.email });
-  if (error) { toast(error.code === '23505' ? 'Indirizzo già abilitato' : 'Errore: ' + error.message); return; }
-  const { data } = await sb.from('lastella_members').select('*').order('added_at'); AUTH.team = data || []; toast(email + ' abilitato'); rr();
+  const fd = new FormData(e.target);
+  const r = await http('POST', 'team/add', { email: fd.get('email'), password: fd.get('password'), role: fd.get('role') });
+  if (!r.ok) { toast(r.body.error || 'Errore'); return; }
+  await refreshTeam(); toast('Account creato: comunica la password al collega'); rr();
 });
-ACTIONS['team-del'] = async el => {
-  if (!confirm('Rimuovere ' + el.dataset.e + ' dal team?')) return;
-  const { error } = await sb.from('lastella_members').delete().eq('email', el.dataset.e); if (error) { toast('Errore: ' + error.message); return; }
-  const { data } = await sb.from('lastella_members').select('*').order('added_at'); AUTH.team = data || []; rr();
+ACTIONS['team-act'] = async el => {
+  if (el.dataset.a === 'remove' && !confirm('Rimuovere ' + el.dataset.e + ' dal team?')) return;
+  const r = await http('POST', 'team/' + el.dataset.a, { email: el.dataset.e, role: el.dataset.r }); if (!r.ok) { toast(r.body.error || 'Errore'); return; }
+  await refreshTeam(); rr();
+};
+ACTIONS['team-reset'] = async el => {
+  const pw = prompt('Nuova password provvisoria per ' + el.dataset.e + ' (min. 8 caratteri):'); if (!pw) return;
+  const r = await http('POST', 'team/reset', { email: el.dataset.e, password: pw }); toast(r.ok ? 'Password reimpostata' : (r.body.error || 'Errore'));
+};
+ACTIONS['pw-change'] = async () => {
+  const old = prompt('Password attuale:'); if (!old) return; const next = prompt('Nuova password (min. 8 caratteri):'); if (!next) return;
+  const r = await http('POST', 'password', { old, next }); toast(r.ok ? 'Password cambiata' : (r.body.error || 'Errore'));
 };

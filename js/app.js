@@ -66,6 +66,7 @@ function render(top = true) {
   else html = eventShell(E);
   $('#main').innerHTML = html;
   document.title = (E ? evName(E) + ' · ' : '') + 'La Stella · Gestionale eventi';
+  if (ROUTE.view === 'settings' && CLOUD) syncTeam();
   if (top) window.scrollTo(0, 0);
 }
 function sideHtml(E) {
