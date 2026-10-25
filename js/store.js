@@ -20,7 +20,7 @@ function newEvent() {
     q: {
       sposo1: '', sposo2: '', tel: '', email: '', planner: '', plannerTel: '',
       tipo: 'Matrimonio', pasto: 'Cena', data: '', listino: L.id, locationNome: 'La Castella',
-      adulti: 100, bambini: 0, neonati: 0, giorno: 'auto',
+      adulti: 100, bambini: 0, neonati: 0, staff: 0, garantiti: '', giorno: 'auto',
       rito: 'Civile', ritoNote: '', provenienza: '', budget: '', fornitori: '', accessibilita: '', note: '',
       scadenzaAllest: '', scadenzaMenu: '', validita: '',
       orari: { cerimonia: '', aperitivo: '', cena: '', torta: '', lounge: '', cocktail: '' },
@@ -32,10 +32,18 @@ function newEvent() {
       formula: '3a', pre: [], entree: [], primi: [], secondi: [], formaggi: false,
       bianco: '', rosso: '', extraVini: [], dessert: '', lounge: [], caffeAlt: '', noteMenu: '',
     },
-    allest: {}, addons: {}, special: [], recipes: {}, econ: { rettifiche: [], note: '' },
+    allest: {}, addons: {}, special: [], recipes: {}, econ: { rettifiche: [], note: '' }, pagamenti: [],
+    consegne: {
+      numeriOk: false, allergieOk: false, tavoliOk: false, disposizioneOk: false, seggiolini: '', attrezzatura: '', extratime: '', orientamento: '', sposiLato: 'Sposa a sinistra, sposo a destra',
+      fornitori: ['Allestitore floreale', 'Musicista aperitivo', 'Fotografo', 'Pasticceria', 'Wedding planner', 'Musicista openbar', 'Intrattenimento bimbi', 'Altro'].map(r => ({ ruolo: r, nome: '', tel: '', email: '' })),
+    },
   };
 }
 
+function hydrate(e) {
+  const d = newEvent();
+  return Object.assign(d, e, { q: Object.assign(d.q, e.q), menu: Object.assign(d.menu, e.menu), econ: Object.assign({ rettifiche: [], note: '' }, e.econ), consegne: Object.assign(d.consegne, e.consegne) });
+}
 let S = load();
 function load() {
   try {
@@ -43,9 +51,7 @@ function load() {
     if (raw) {
       const s = JSON.parse(raw);
       s.settings = Object.assign(defaultSettings(), s.settings || {});
-      s.events = (s.events || []).map(e => Object.assign(newEvent(), e, {
-        q: Object.assign(newEvent().q, e.q), menu: Object.assign(newEvent().menu, e.menu), econ: Object.assign({ rettifiche: [], note: '' }, e.econ),
-      }));
+      s.events = (s.events || []).map(hydrate);
       return s;
     }
   } catch (e) { console.warn('stato non leggibile', e); }
@@ -56,6 +62,7 @@ function save() {
   clearTimeout(saveTimer);
   saveTimer = setTimeout(() => {
     try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) { console.warn('salvataggio non riuscito', e); }
+    if (typeof cloudPush === 'function') cloudPush();
   }, 150);
 }
 const getEvent = id => S.events.find(e => e.id === id);
@@ -71,13 +78,13 @@ function pset(obj, path, val) {
 /* ---- invitati ---- */
 const fullName = g => `${g.nome || ''} ${g.cognome || ''}`.trim();
 const initials = g => ((g.nome || '?')[0] + ((g.cognome || '')[0] || '')).toUpperCase();
-function newGuest(p = {}) { return Object.assign({ id: uid(), nome: '', cognome: '', fascia: 'Adulto', dieta: '', allergie: [], intolleranze: [], altro: '', note: '' }, p); }
+function newGuest(p = {}) { return Object.assign({ id: uid(), nome: '', cognome: '', fascia: 'Adulto', dieta: '', allergie: [], intolleranze: [], altro: '', note: '', seggiolone: false }, p); }
 function guestFlags(g) { return { all: g.allergie.length || (g.altro ? 1 : 0), int: g.intolleranze.length, dieta: g.dieta ? 1 : 0 }; }
 function hasSpecial(g) { return g.allergie.length || g.intolleranze.length || g.dieta || g.altro || g.note; }
 function guestCounts(E) {
-  const c = { tot: E.guests.length, Adulto: 0, Bambino: 0, Neonato: 0, allergie: 0, intolleranze: 0, diete: {}, byAll: {}, byInt: {} };
+  const c = { tot: E.guests.length, Adulto: 0, Bambino: 0, Neonato: 0, Staff: 0, seggioloni: 0, allergie: 0, intolleranze: 0, diete: {}, byAll: {}, byInt: {} };
   E.guests.forEach(g => {
-    c[g.fascia] = (c[g.fascia] || 0) + 1;
+    c[g.fascia] = (c[g.fascia] || 0) + 1; if (g.seggiolone) c.seggioloni++;
     if (g.allergie.length || g.altro) c.allergie++;
     if (g.intolleranze.length) c.intolleranze++;
     if (g.dieta) c.diete[g.dieta] = (c.diete[g.dieta] || 0) + 1;
@@ -128,6 +135,7 @@ function parseWorkbook(wb) {
     else if (h === 'cognome') col.cognome = i;
     else if (h === 'fascia') col.fascia = i;
     else if (h === 'dieta') col.dieta = i;
+    else if (h.startsWith('seggiolon')) col.segg = i;
     else if (h.startsWith('allergia')) { const k = allMap[h.replace(/^allergia\s*/, '')]; if (k) allCols.push([i, k]); }
     else if (h.startsWith('intolleranza')) { const k = intMap[h.replace(/^intolleranza\s*/, '')]; if (k) intCols.push([i, k]); }
     else if (h.startsWith('altre allergie')) col.altro = i;
@@ -143,7 +151,8 @@ function parseWorkbook(wb) {
     const dietaRaw = norm(r[col.dieta]);
     const g = newGuest({
       nome, cognome,
-      fascia: f.startsWith('b') ? 'Bambino' : f.startsWith('n') ? 'Neonato' : 'Adulto',
+      fascia: f.startsWith('b') ? 'Bambino' : f.startsWith('n') ? 'Neonato' : f.startsWith('s') ? 'Staff' : 'Adulto',
+      seggiolone: col.segg != null && yes(r[col.segg]),
       dieta: dieteMap[dietaRaw] || '',
       allergie: allCols.filter(([i]) => yes(r[i])).map(([, k]) => k),
       intolleranze: intCols.filter(([i]) => yes(r[i])).map(([, k]) => k),
@@ -201,19 +210,22 @@ function addonState(E, a) { return E.addons[a.id] || {}; }
 function addonVariant(a, st) { return a.varianti ? (a.varianti.find(v => v.id === st.variante) || a.varianti[0]) : null; }
 function addonQty(E, a, st) {
   if (st.qty !== undefined && st.qty !== '' && st.qty !== null) return Number(st.qty);
+  if (a.perOra) return 1;
   if (a.minPers) return a.minPers;
   return E.q.adulti || 0;
 }
 
 function computeQuote(E) {
   const L = listinoOf(E), q = E.q, g = giornoOf(E);
-  const ad = +q.adulti || 0, ch = +q.bambini || 0, ne = +q.neonati || 0;
+  const adReal = +q.adulti || 0, garantiti = +q.garantiti || 0, ch = +q.bambini || 0, ne = +q.neonati || 0;
+  const ad = Math.max(adReal, garantiti);   // da contratto: il compenso non scende sotto il minimo garantito
   const P = priceOf(`base:${L.id}:${g}`, L[g]);
   const cocktail = !!(E.addons.cocktail && E.addons.cocktail.on);
   const lines = [], warnings = [], infos = [];
   const add = (sec, label, qty, unit, tot, extra = {}) => lines.push(Object.assign({ sec, label, qty, unit, tot }, extra));
 
   // 1. proposta Diamante
+  if (garantiti && adReal < garantiti) infos.push(`Adulti previsti (${adReal}) sotto gli ospiti garantiti da contratto (${garantiti}): il compenso resta calcolato su ${garantiti} (art. 2.3).`);
   const min = L.minAdulti;
   if (ad >= min) {
     add('Proposta Diamante', `Proposta Diamante · primi ${min} ospiti adulti (${g === 'sabato' ? 'sabato' : 'da domenica a venerdì'})`, min, P, min * P);
@@ -260,7 +272,7 @@ function computeQuote(E) {
     const base = v ? priceOf(`add:${a.id}:${v.id}`, v.prezzo) : priceOf(`add:${a.id}`, a.prezzo);
     const unit = (st.prezzo !== undefined && st.prezzo !== '' && st.prezzo !== null) ? Number(st.prezzo) : base;
     const qty = addonQty(E, a, st);
-    add('Servizi aggiuntivi', label, qty, unit, qty * unit);
+    add('Servizi aggiuntivi', label + (a.perOra ? ' (ore)' : ''), qty, unit, qty * unit);
   });
   // imperiale mostrato come add-on ma contato in allestimenti
   // 4. richieste speciali
@@ -300,6 +312,8 @@ function selectedRecipes(E) {
   if (m.cocktail) push('Aperitivo · Buvette', gen('bv-cocktail', 'Cocktail d’aperitivo · ' + m.cocktail, ['Ingredienti: ' + m.cocktail, 'Ghiaccio', 'Garnish'], ['Mise en place bar', 'Preparazione al momento']));
   push('Aperitivo · Buvette', gen('bv-analc', 'Analcolici' + (m.succo ? ' · succo ' + m.succo.toLowerCase() : ''), [m.succo ? 'Succo di frutta ' + m.succo.toLowerCase() : 'Succo di frutta', 'Coca Cola in vetro', 'Acqua naturale e frizzante Sparea Splendida'], ['Raffreddare', 'Servizio']));
   m.extraBuvette.forEach((n, i) => push('Aperitivo · Buvette', gen('bv-x-' + norm(n).replace(/ /g, '-'), 'Extra buvette · ' + n, [n], ['Acquisto e raffreddamento', 'Servizio'])));
+  // menù bambini (FAQ 2027)
+  if ((+E.q.bambini || 0) > 0) CAT.menuBimbi.items.forEach(r => push('Menù bambini', r));
   // a tavola
   const pick = (ids, sec) => ids.forEach(id => push(sec, RECIPE_INDEX[id]));
   pick(m.pre, 'A tavola · Pre-entrée'); pick(m.entree, 'A tavola · Entrée'); pick(m.primi, 'A tavola · Primo piatto'); pick(m.secondi, 'A tavola · Secondo piatto');
@@ -328,11 +342,11 @@ function selectedRecipes(E) {
 function recipeState(E, r) {
   let st = E.recipes[r.id];
   if (!st) {
-    st = E.recipes[r.id] = { porz: null, ing: r.ing.map(n => ({ n, q: '', u: 'g', ok: false })), semi: r.semi.map(n => ({ n, ok: false })), asm: r.asm.map(n => ({ n, ok: false })), note: '' };
+    st = E.recipes[r.id] = { kid: !!r.kid, porz: null, ing: r.ing.map(n => ({ n, q: '', u: 'g', ok: false })), semi: r.semi.map(n => ({ n, ok: false })), asm: r.asm.map(n => ({ n, ok: false })), note: '' };
   }
   return st;
 }
-const portionsOf = (E, st) => (st && st.porz != null && st.porz !== '') ? Number(st.porz) : ((+E.q.adulti || 0) + (+E.q.bambini || 0));
+const portionsOf = (E, st) => (st && st.porz != null && st.porz !== '') ? Number(st.porz) : (st && st.kid ? (+E.q.bambini || 0) : ((+E.q.adulti || 0) + (+E.q.bambini || 0)));
 function recipeProgress(st) {
   const f = a => [a.filter(x => x.ok).length, a.length];
   return { ing: f(st.ing), semi: f(st.semi), asm: f(st.asm) };

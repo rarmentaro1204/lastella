@@ -253,3 +253,11 @@ table.tb { width: 100%; border-collapse: collapse; background: #fff; border: 1px
   .quote { border: 0; padding: 0; } body.printing-quote .econ-side { display: none; }
   @page { margin: 16mm; }
 }
+
+/* ---------- login ---------- */
+.app.noside { grid-template-columns: 1fr; } .app.noside .side { display: none; }
+.app.noside .main { display: grid; place-items: center; min-height: 100vh; background: var(--navy); max-width: none; }
+.authbox { background: #fff; border-radius: 8px; padding: 40px 38px; width: min(440px, 100%); box-shadow: 0 20px 60px #0006; }
+.authlogo { text-align: center; margin-bottom: 26px; } .authlogo b { display: block; font-family: var(--serif); font-weight: 300; font-size: 30px; letter-spacing: .5em; padding-left: .5em; color: var(--navy); }
+.authlogo i { font-style: normal; font-size: 9px; letter-spacing: .55em; color: var(--sand); padding-left: .55em; display: block; margin-top: 6px; }
+.side .foot #sync-ind { font-size: 12px; color: #d9d2c8; }

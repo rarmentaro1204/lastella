@@ -41,6 +41,8 @@ CAT.intolleranze = [
   { k: 'istamina', label: 'Istamina', icon: '🧪' },
   { k: 'fruttosio', label: 'Fruttosio', icon: '🍯' },
   { k: 'favismo', label: 'Favismo', icon: '🫛' },
+  { k: 'gravidanza', label: 'Gravidanza', icon: '🤰' },
+  { k: 'funghi', label: 'Funghi', icon: '🍄' },
 ];
 CAT.diete = [
   { k: 'Vegetariano', label: 'Vegetariano', icon: '🥕' },
@@ -55,6 +57,7 @@ CAT.fasce = [
   { k: 'Adulto', label: 'Adulto', icon: '' },
   { k: 'Bambino', label: 'Bambino (3-10)', icon: '🧒' },
   { k: 'Neonato', label: 'Neonato (0-2)', icon: '🍼' },
+  { k: 'Staff', label: 'Staff / fornitori', icon: '🧑‍🍳' },
 ];
 
 /* ---------------------------------------------------------------- aperitivo */
@@ -177,6 +180,9 @@ CAT.primi = [
   { gruppo: 'Lo gnocco', items: [
     R('pr-gnocchi', 'Gnocchetti di patate, sugo ai tre datterini dell’orto, basilico, crudo di gamberi', '', 'Patate;Farina;Uova;Datterini (3 colori);Basilico;Gamberi', 'Gnocchetti formati;Sugo ai tre datterini;Gamberi crudi puliti', 'Cottura gnocchetti;Condimento;Impiattamento'),
   ] },
+  { gruppo: 'Su richiesta', items: [
+    R('pr-lasagna', 'Lasagna', 'possibilità di realizzare la lasagna come primo piatto (Allegato A)', 'Sfoglia / pasta per lasagne;Ragù;Besciamella;Parmigiano', 'Sfoglia;Ragù;Besciamella;Lasagne assemblate e cotte'),
+  ] },
   { gruppo: 'Le paste di Gragnano', items: [
     R('pr-mischiata', 'Pasta mischiata, amatriciana di mare, guanciale croccante', '', 'Pasta mischiata di Gragnano;Pomodoro;Frutti di mare / pesce;Guanciale;Cipolla;Vino bianco', 'Sugo amatriciana di mare;Guanciale croccante', 'Cottura pasta;Mantecatura nel sugo;Impiattamento'),
     R('pr-fusilloni', 'Fusilloni, crema di cicorie, crumble alle nocciole', '', 'Fusilloni;Cicorie;Aglio;Olio EVO;Nocciole;Pangrattato', 'Crema di cicorie;Crumble alle nocciole', 'Cottura pasta;Mantecatura nella crema;Impiattamento', ['vegetariano']),
@@ -193,6 +199,14 @@ CAT.secondi = [
 CAT.formaggi = [
   R('fo-degustazione', 'Degustazione di formaggi', 'tre tipologie di formaggi, in abbinamento miele, confettura, mostarda', 'Formaggi (3 tipologie);Miele;Confettura;Mostarda', 'Formaggi porzionati;Accompagnamenti in ciotolina', 'Composizione dei taglieri;Servizio a tavola'),
 ];
+CAT.menuBimbi = {
+  nota: 'Per tutta la durata dell’evento il menù è identico a quello degli adulti, eccetto la parte a tavola (FAQ 2027). Seggiolini da comunicare 15 giorni prima.',
+  items: [
+    Object.assign(R('kid-focaccia', 'Focaccia con prosciutto cotto', 'servita durante l’aperitivo', 'Focaccia;Prosciutto cotto', 'Focaccia farcita'), { kid: true }),
+    Object.assign(R('kid-pasta', 'Pasta al pomodoro / al burro', 'primo piatto bambini', 'Pasta;Passata di pomodoro;Burro;Parmigiano', 'Sugo di pomodoro', 'Cottura pasta;Condimento (pomodoro o burro);Impiattamento'), { kid: true }),
+    Object.assign(R('kid-polpette', 'Polpettine di manzo + patatine fritte', 'secondo piatto bambini', 'Macinato di manzo;Uova;Pangrattato;Patate;Olio per frittura', 'Polpettine cotte;Patatine fritte', 'Frittura patatine al momento;Impiattamento'), { kid: true }),
+  ],
+};
 CAT.menuConsigliati = [
   { id: 'dintorni', nome: 'Dintorni', entree: 'en-vitello', primo: 'pr-risotto-toma', secondo: 'se-filetto' },
   { id: 'riflessi', nome: 'Riflessi Mediterranei', entree: 'en-parmigiana', primo: 'pr-mischiata', secondo: 'se-merluzzo' },
@@ -350,7 +364,9 @@ CAT.addons = [
     desc: 'Gestito nella sezione Allestimento (Tavoli). In legno senza tovaglia oppure con tovagliato a scelta tra i nostri colori: + € 5,00 a persona.', prezzo: 5 },
   { id: 'gelati', nome: 'Carretto dei gelati', cat: 'Dolci', desc: 'Soggetto a quotazione personalizzata.', quota: true, ricetta: ['Gelati (gusti da definire)', 'Coni e coppette'] },
   { id: 'pizza', nome: 'Live pizza', cat: 'Serale', desc: 'Soggetto a quotazione personalizzata.', quota: true, ricetta: ['Impasto per pizza', 'Pomodoro', 'Mozzarella', 'Condimenti (da definire)'] },
-  { id: 'extratime', nome: 'Ora anticipo / extra time orario', cat: 'Cerimonia', desc: 'Costi di extra time orario in caso di anticipi o prolungamenti (non indicati in preventivo: quotare).', quota: true },
+  { id: 'extratime', nome: 'Extra time (ore oltre gli orari concordati)', cat: 'Cerimonia', perOra: true,
+    desc: 'Da contratto (art. 4): € 400 per ogni ora ulteriore se la modifica della durata è richiesta entro il 30° giorno lavorativo prima del ricevimento; € 1.000 per ogni ora ulteriore dopo tale termine. I servizi coinvolti dall\'extra time possono richiedere quotazione dedicata.',
+    varianti: [{ id: 'e400', nome: 'Entro il 30° giorno lavorativo prima · € 400/ora', prezzo: 400 }, { id: 'e1000', nome: 'Dal 30° giorno lavorativo al giorno prima · € 1.000/ora', prezzo: 1000 }] },
 ];
 
 /* ---------------------------------------------------------------- preventivo (listini) */

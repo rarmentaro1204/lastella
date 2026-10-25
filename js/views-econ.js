@@ -43,7 +43,7 @@ VIEWS.economics = E => {
   const doc = `<div class="quote" id="quote"><div class="qh"><b>LA STELLA</b><i>NEW CONCEPT BANQUETING</i></div>
     <h1 style="font-size:34px;text-align:center">Preventivo ${E.q.tipo === 'Matrimonio' ? 'Wedding' : 'Evento'}</h1><p style="text-align:center;color:var(--muted);margin:6px 0 0">Proposta Diamante 2026 · elaborato il ${todayIt}</p>
     <h2>L'evento</h2><div class="kv"><div><span>Clienti</span>${esc(evName(E))}</div><div><span>Data</span>${esc(fmtDate(E.q.data))}</div><div><span>Location</span>${esc(E.q.locationNome || '—')}</div><div><span>Pranzo / cena</span>${esc(E.q.pasto)} · ${q.giorno === 'sabato' ? 'tariffa sabato' : 'tariffa domenica–venerdì'}</div>
-      <div><span>Ospiti</span>${num(E.q.adulti)} adulti${+E.q.bambini ? ` · ${num(E.q.bambini)} bambini` : ''}${+E.q.neonati ? ` · ${num(E.q.neonati)} neonati` : ''}</div><div><span>Wedding planner</span>${esc(E.q.planner || '—')}</div></div>
+      <div><span>Ospiti</span>${num(E.q.adulti)} adulti${+E.q.garantiti ? ` (${num(E.q.garantiti)} garantiti)` : ''}${+E.q.bambini ? ` · ${num(E.q.bambini)} bambini` : ''}${+E.q.neonati ? ` · ${num(E.q.neonati)} neonati` : ''}${+E.q.staff ? ` · ${num(E.q.staff)} staff` : ''}</div><div><span>Wedding planner</span>${esc(E.q.planner || '—')}</div></div>
     ${sum.length ? `<h2>Riepilogo delle scelte</h2><div class="sel">${sum.map(([t, rows]) => `<div><b>${t}</b>${rows.map(([k, v]) => `<div style="margin:2px 0"><span class="muted">${esc(k)}${v ? ':' : ''}</span> ${esc(v)}</div>`).join('')}</div>`).join('')}</div>` : ''}
     <h2>Quotazione</h2>
     <table class="tb" style="border:0"><thead><tr><th>Descrizione</th><th class="num">Q.tà</th><th class="num">Unitario</th><th class="num">Importo</th></tr></thead><tbody>
@@ -67,8 +67,21 @@ VIEWS.economics = E => {
     <div class="card" style="margin-top:16px"><div class="chead"><h4>Stato della pratica</h4><span class="pill right ${c.pct === 100 ? 'ok' : 'warn'}">${c.pct}%</span></div><div style="margin-top:8px">${c.items.map(i => `<div class="small" style="padding:2px 0;color:${i.ok ? 'var(--ok)' : 'var(--muted)'}">${i.ok ? '✓' : '○'} ${esc(i.label)}</div>`).join('')}</div></div>
     <div class="row" style="margin-top:16px"><button class="btn" onclick="document.body.classList.add('printing-quote');window.print();setTimeout(()=>document.body.classList.remove('printing-quote'),500)">🖨 Stampa / PDF</button><button class="btn alt" data-act="export-quote">⭳ Excel</button></div></div>`;
   return `<div class="secthead noprint"><div><h2>Economics</h2><p>Riepilogo di quanto scelto e detto, valorizzato con il listino. Il preventivo si aggiorna in tempo reale a ogni modifica di ospiti, allestimenti, add-on e richieste speciali.</p></div></div>
-  <div class="econ-grid">${doc}${side}</div>`;
+  <div class="econ-grid">${doc}${side}</div>${pagamentiHtml(E, q)}`;
 };
+function pagamentiHtml(E, q) {
+  const P = E.pagamenti, iva = S.settings.iva / 100, tot = P.reduce((a, x) => a + (Number(x.importo) || 0), 0), paid = P.filter(x => x.paid).reduce((a, x) => a + (Number(x.importo) || 0), 0);
+  const diff = q.imponibile - tot;
+  return `<div class="card noprint" style="margin-top:18px"><div class="chead"><h3>Scadenzario pagamenti</h3><span class="muted small">importi oltre IVA ${S.settings.iva}%</span><button class="btn sm alt right" data-act="pay-add">＋ Rata</button></div>
+    ${P.length ? `<table class="tb"><thead><tr><th style="width:44px">Pagato</th><th>Descrizione</th><th>Scadenza</th><th class="num">Importo (iva escl.)</th><th class="num">Iva incl.</th><th></th></tr></thead><tbody>
+    ${P.map((x, i) => { const late = !x.paid && x.due && new Date(x.due + 'T23:59:59') < new Date(); return `<tr><td><input type="checkbox" data-b="pagamenti.${i}.paid" data-r ${x.paid ? 'checked' : ''}></td><td><input type="text" data-b="pagamenti.${i}.desc" value="${esc(x.desc)}"></td>
+      <td><input type="date" data-b="pagamenti.${i}.due" data-r value="${esc(x.due)}">${late ? ' <span class="pill bad">scaduta</span>' : ''}</td><td class="num"><input type="number" style="width:110px" data-b="pagamenti.${i}.importo" data-r value="${x.importo}"></td><td class="num">${eur((Number(x.importo) || 0) * (1 + iva))}</td><td><button class="btn ghost sm" data-act="pay-del" data-i="${i}">✕</button></td></tr>`; }).join('')}</tbody>
+    <tfoot><tr><td></td><td>Totale rate</td><td></td><td class="num">${eur(tot)}</td><td class="num">${eur(tot * (1 + iva))}</td><td></td></tr></tfoot></table>
+    <div class="row" style="margin-top:10px"><span class="pill ok">Incassato ${eur(paid)}</span><span class="pill ${Math.abs(diff) < 0.5 ? 'ok' : 'warn'}">${Math.abs(diff) < 0.5 ? 'Rate = preventivo' : (diff > 0 ? 'Da pianificare ' + eur(diff) : 'Rate oltre il preventivo di ' + eur(-diff)) + ' (iva escl.)'}</span><span class="pill">Residuo da incassare ${eur(q.imponibile - paid)} iva escl.</span></div>`
+    : '<p class="muted">Nessuna rata. Aggiungi caparre e saldo secondo l\'articolo 2.3 del contratto.</p>'}</div>`;
+}
+ACTIONS['pay-add'] = () => { curEvent().pagamenti.push({ desc: '', due: '', importo: '', paid: false }); save(); rr(); };
+ACTIONS['pay-del'] = el => { curEvent().pagamenti.splice(+el.dataset.i, 1); save(); rr(); };
 ACTIONS['rt-add'] = () => { curEvent().econ.rettifiche.push({ desc: '', importo: '' }); save(); rr(); };
 ACTIONS['rt-del'] = el => { curEvent().econ.rettifiche.splice(+el.dataset.i, 1); save(); rr(); };
 ACTIONS['export-quote'] = () => {

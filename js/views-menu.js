@@ -15,7 +15,7 @@ function needsPanel(E) {
   if (!pills.length) return '';
   const veg = (c.diete.Vegano || 0) + (c.diete.Vegetariano || 0), vegan = c.diete.Vegano || 0, m = E.menu;
   const hasVeganMain = m.secondi.some(id => (RECIPE_INDEX[id].tags || []).includes('vegano'));
-  return `<div class="card" style="margin-bottom:16px"><div class="chead"><h4>Esigenze degli invitati</h4><span class="muted small">da prevedere con lo chef · alternative senza costi nascosti da verificare</span></div><div class="needs" style="margin-top:8px">${pills.join('')}</div>
+  return `<div class="card" style="margin-bottom:16px"><div class="chead"><h4>Esigenze degli invitati</h4><span class="muted small">la cucina propone un'alternativa alla sola portata non consumabile, senza cambiare le ricette scelte (FAQ 2027); aperitivo e buffet restano invariati</span></div><div class="needs" style="margin-top:8px">${pills.join('')}</div>
     ${vegan && !hasVeganMain ? `<div class="alert small" style="margin-top:10px">Ci sono ${vegan} ospiti vegani: nessun secondo piatto vegano selezionato (es. «Millefoglie vegetale»).</div>` : ''}${veg && vegan === 0 ? `<div class="small muted" style="margin-top:8px">Servono ${veg} porzioni vegetariane: concordare le alternative con lo chef.</div>` : ''}</div>`;
 }
 
@@ -71,6 +71,7 @@ function viewTavola(E) {
   ${courseBlock(E, 'Primo piatto', null, 'menu.primi', f.primi, CAT.primi)}<div class="sp"></div>
   ${courseBlock(E, 'Secondo piatto', CAT.secondi, 'menu.secondi', f.secondi)}<div class="sp"></div>
   <div class="card"><div class="chead"><h3>Degustazione di formaggi</h3><span class="pill warn">opzionale · verificare quotazione</span></div><div class="pick">${OPT(m.formaggi, 'data-b-toggle="1" data-pick-bool="menu.formaggi"', CAT.formaggi[0].name, CAT.formaggi[0].desc, { sq: 1 })}</div></div>
+  ${(+E.q.bambini || 0) > 0 ? `<div class="card" style="margin-top:16px"><div class="chead"><h3>Menù bambini</h3><span class="pill ok">incluso · ${E.q.bambini} bambini</span></div><p class="hint">${esc(CAT.menuBimbi.nota)}</p><div class="grid g3">${CAT.menuBimbi.items.map(r => `<div class="fixed"><b>${esc(r.name)}</b><div class="hint">${esc(r.desc)}</div></div>`).join('')}</div></div>` : ''}
   <div class="secbar"><h3>Bevande a tavola</h3><span class="muted small">consumo illimitato · etichette incluse nella proposta Diamante</span></div>
   <div class="grid g2"><div class="card"><h4 style="margin-bottom:10px">Un vino bianco a scelta</h4><div class="pick">${CAT.vini.bianchi.map(v => OPT(m.bianco === v, `data-pick="menu.bianco" data-v="${esc(v)}"`, v)).join('')}</div></div>
     <div class="card"><h4 style="margin-bottom:10px">Un vino rosso a scelta</h4><div class="pick">${CAT.vini.rossi.map(v => OPT(m.rosso === v, `data-pick="menu.rosso" data-v="${esc(v)}"`, v)).join('')}</div></div></div>
@@ -155,7 +156,7 @@ HOOKS.addvar = el => { delete curEvent().recipes['ad-' + el.dataset.a]; rr(); };
 VIEWS.addon = E => {
   const q = computeQuote(E), tot = q.lines.filter(l => l.sec === 'Servizi aggiuntivi').reduce((a, l) => a + l.tot, 0);
   const cats = [...new Set(CAT.addons.map(a => a.cat))];
-  return `<div class="secthead"><div><h2>Add-on</h2><p>Servizi aggiuntivi alla proposta Diamante. Seleziona quelli richiesti dal cliente: entrano nel preventivo. Prezzi in € a persona oltre IVA, calcolati sugli ospiti adulti (modificabili).</p></div><div class="tile right"><b>${eur(tot)}</b><span>Totale add-on (iva escl.)</span></div></div>
+  return `<div class="secthead"><div><h2>Add-on</h2><p>Servizi aggiuntivi alla proposta Diamante. Seleziona quelli richiesti dal cliente: entrano nel preventivo. Prezzi in € a persona oltre IVA (10%), calcolati sugli ospiti adulti (modificabili).</p></div><div class="tile right"><b>${eur(tot)}</b><span>Totale add-on (iva escl.)</span></div></div>
   <div class="grid auto" style="grid-template-columns:repeat(auto-fill,minmax(420px,1fr))">${CAT.addons.map(a => addonCard(E, a)).join('')}</div>`;
 };
 function addonCard(E, a) {
@@ -166,12 +167,12 @@ function addonCard(E, a) {
   }
   const v = a.varianti ? (a.varianti.find(x => x.id === st.variante) || a.varianti[0]) : null;
   const defPrice = v ? priceOf(`add:${a.id}:${v.id}`, v.prezzo) : a.prezzo ? priceOf(`add:${a.id}`, a.prezzo) : null;
-  const priceTag = a.quota ? '<span class="pill warn">su quotazione</span>' : a.varianti ? `<span class="pill warn">da ${eur(Math.min(...a.varianti.map(x => x.prezzo)))} / pers</span>` : `<span class="pill warn">${eur(a.prezzo)} / pers</span>`;
+  const priceTag = a.quota ? '<span class="pill warn">su quotazione</span>' : a.varianti ? `<span class="pill warn">da ${eur(Math.min(...a.varianti.map(x => x.prezzo)))} / ${a.perOra ? 'ora' : 'pers'}</span>` : `<span class="pill warn">${eur(a.prezzo)} / pers</span>`;
   return `<div class="card" style="${on ? 'border-color:var(--navy);box-shadow:0 0 0 1px var(--navy)' : ''}"><label class="chead" style="cursor:pointer"><input type="checkbox" data-b="addons.${a.id}.on" data-r ${on ? 'checked' : ''}><h4 style="flex:1">${esc(a.nome)}</h4>${priceTag}</label>
     <p class="muted small" style="margin:8px 0 0">${esc(a.desc)}</p>
-    ${on ? `<div class="sp"></div>${a.varianti ? `<div class="pick">${a.varianti.map(x => `<label class="opt ${x.id === v.id ? 'on' : ''}"><input type="radio" hidden name="va-${a.id}" data-b="addons.${a.id}.variante" data-hook="addvar" data-a="${a.id}" value="${x.id}" ${x.id === v.id ? 'checked' : ''}><span class="mk"></span><div class="t" style="font-weight:600">${esc(x.nome)}${x.items ? `<div class="d" style="font-weight:400">${esc(x.items.join(' · '))}</div>` : ''}</div><span class="pr">${eur(priceOf(`add:${a.id}:${x.id}`, x.prezzo))}</span></label>`).join('')}</div><div class="sp"></div>` : ''}
+    ${on ? `<div class="sp"></div>${a.varianti ? `<div class="pick">${a.varianti.map(x => `<label class="opt ${x.id === v.id ? 'on' : ''}"><input type="radio" hidden name="va-${a.id}" data-b="addons.${a.id}.variante" data-hook="addvar" data-a="${a.id}" value="${x.id}" ${x.id === v.id ? 'checked' : ''}><span class="mk"></span><div class="t" style="font-weight:600">${esc(x.nome)}${x.items ? `<div class="d" style="font-weight:400">${esc(x.items.join(' · '))}</div>` : ''}</div><span class="pr">${eur(priceOf(`add:${a.id}:${x.id}`, x.prezzo))}${a.perOra ? '/h' : ''}</span></label>`).join('')}</div><div class="sp"></div>` : ''}
       <div class="fields" style="grid-template-columns:repeat(auto-fill,minmax(130px,1fr))">
-        ${a.quota || (!a.prezzo && !a.varianti) ? `<div class="field"><label>Importo quotato (€ forfait)</label><input type="number" data-b="addons.${a.id}.prezzo" data-r value="${st.prezzo ?? ''}"></div>` : `<div class="field"><label>${a.minPers ? 'Persone (min ' + a.minPers + ')' : 'Persone'}</label><input type="number" data-b="addons.${a.id}.qty" data-r value="${st.qty ?? ''}" placeholder="${a.minPers || E.q.adulti}"></div><div class="field"><label>€ a persona</label><input type="number" step="0.5" data-b="addons.${a.id}.prezzo" data-r value="${st.prezzo ?? ''}" placeholder="${defPrice}"></div>`}
+        ${a.quota || (!a.prezzo && !a.varianti) ? `<div class="field"><label>Importo quotato (€ forfait)</label><input type="number" data-b="addons.${a.id}.prezzo" data-r value="${st.prezzo ?? ''}"></div>` : `<div class="field"><label>${a.perOra ? 'Ore' : a.minPers ? 'Persone (min ' + a.minPers + ')' : 'Persone'}</label><input type="number" data-b="addons.${a.id}.qty" data-r value="${st.qty ?? ''}" placeholder="${a.perOra ? 1 : a.minPers || E.q.adulti}"></div><div class="field"><label>${a.perOra ? '€ all\'ora' : '€ a persona'}</label><input type="number" step="0.5" data-b="addons.${a.id}.prezzo" data-r value="${st.prezzo ?? ''}" placeholder="${defPrice}"></div>`}
         <div class="field" style="grid-column:1/-1"><label>Note</label><input type="text" data-b="addons.${a.id}.note" value="${esc(st.note || '')}"></div></div>
       ${a.id === 'cocktail' ? `<div class="alert ok small" style="margin-top:10px">Con il cocktail bar: sconto di € ${listinoOf(E).scontoOltre} a persona dal ${listinoOf(E).minAdulti + 1}° ospite adulto.</div>` : ''}` : ''}</div>`;
 }

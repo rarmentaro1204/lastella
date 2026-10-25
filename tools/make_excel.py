@@ -35,9 +35,10 @@ ALLERGIE = [
 INTOLLERANZE = [
     ("celiachia", "Celiachia"), ("lattosio", "Lattosio"), ("nichel", "Nichel"),
     ("istamina", "Istamina"), ("fruttosio", "Fruttosio"), ("favismo", "Favismo"),
+    ("gravidanza", "Gravidanza"), ("funghi", "Funghi"),
 ]
 DIETE = ["Vegetariano", "Vegano", "Fruttariano", "Pescetariano", "Crudista", "Halal", "Kosher"]
-FASCE = ["Adulto", "Bambino", "Neonato"]
+FASCE = ["Adulto", "Bambino", "Neonato", "Staff"]
 
 N_GUEST_ROWS = 300      # righe disponibili in "Invitati"
 N_TABLES = 40           # tavoli disponibili in "Tavoli"
@@ -67,11 +68,11 @@ def build(path, sample=False):
     wr = wb.create_sheet("Leggimi")
 
     # ---------------------------------------------------------------- Invitati
-    cols = ["Nome", "Cognome", "Fascia", "Dieta"]
+    cols = ["Nome", "Cognome", "Fascia", "Dieta", "Seggiolone"]
     cols += [f"Allergia – {lab}" for _, lab in ALLERGIE]
     cols += [f"Intolleranza – {lab}" for _, lab in INTOLLERANZE]
     cols += ["Altre allergie / intolleranze (scrivere)", "Note per la cucina", "Nome completo", "Stato tavolo"]
-    c_first_all = 5
+    c_first_all = 6
     c_first_int = c_first_all + len(ALLERGIE)
     c_other = c_first_int + len(INTOLLERANZE)
     c_note = c_other + 1
@@ -85,6 +86,8 @@ def build(path, sample=False):
             hdr(c, NAVY)
         elif i == 4:
             hdr(c, SAGE, "FFFFFF")
+        elif i == 5:
+            hdr(c, SAND, "FFFFFF", rotate=True)
         elif i < c_first_int:
             hdr(c, TERRA, rotate=True)
         elif i < c_other:
@@ -95,7 +98,7 @@ def build(path, sample=False):
             hdr(c, SAND)
     ws.row_dimensions[1].height = 130
 
-    widths = {1: 16, 2: 18, 3: 11, 4: 15, c_other: 28, c_note: 28, c_full: 24, c_stato: 14}
+    widths = {1: 16, 2: 18, 3: 11, 4: 15, 5: 6, c_other: 28, c_note: 28, c_full: 24, c_stato: 14}
     for i in range(1, len(cols) + 1):
         ws.column_dimensions[L(i)].width = widths.get(i, 4.6)
     ws.freeze_panes = "C2"
@@ -107,6 +110,7 @@ def build(path, sample=False):
         ws.add_data_validation(dv)
     dv_fascia.add(f"C2:C{last}")
     dv_dieta.add(f"D2:D{last}")
+    dv_x.add(f"E2:E{last}")
     dv_x.add(f"{L(c_first_all)}2:{L(c_other - 1)}{last}")
 
     for r in range(2, last + 1):
@@ -227,15 +231,16 @@ def build(path, sample=False):
 
     row("Come si compila", "Compilate i due fogli in ordine: prima «Invitati», poi «Tavoli». Poi rimandateci il file così com'è (non cambiate nomi dei fogli o l'ordine delle colonne).")
     row("1 · Foglio «Invitati»", "Una riga per persona: Nome, Cognome, Fascia (Adulto / Bambino / Neonato) e, se serve, Dieta. Mettete una X nelle colonne delle ALLERGIE (rosso) e delle INTOLLERANZE (giallo) che riguardano quella persona. Per tutto il resto usate le due colonne di testo a destra.")
-    row("   Fascia", "Adulto · Bambino (circa 3-10 anni) · Neonato (0-2 anni). Bambini e neonati occupano comunque un posto a tavola.")
+    row("   Fascia", "Adulto · Bambino con menù bimbi (circa 3-10 anni) · Neonato con pappe della mamma (0-2 anni) · Staff (fotografo, musicisti, wedding planner… che siedono a tavola). Tutti occupano un posto a tavola.")
+    row("   Seggiolone", "Mettete una X per i bambini che hanno bisogno di un seggiolone: va comunicato almeno 15 giorni prima.")
     row("   Dieta", "Vegetariano · Vegano · Fruttariano · Pescetariano · Crudista · Halal · Kosher. Lasciate vuoto se nessuna.")
     row("   Allergie", "Sono i 14 allergeni a dichiarazione obbligatoria (Reg. UE 1169/2011). Una allergia è un rischio per la salute: segnalatela sempre, anche se lieve.")
-    row("   Intolleranze", "Celiachia, lattosio, nichel, istamina, fruttosio, favismo. Se manca la vostra, scrivetela in «Altre allergie / intolleranze».")
+    row("   Intolleranze", "Celiachia, lattosio, nichel, istamina, fruttosio, favismo, gravidanza, funghi. Se manca la vostra, scrivetela in «Altre allergie / intolleranze». Per allergie e intolleranze la cucina prepara un'alternativa al menù principale, senza che dobbiate cambiare le ricette scelte.")
     row("2 · Foglio «Tavoli»", "Per ogni tavolo: scegliete la FORMA (Tondo o Rettangolare/imperiale), indicate il NUMERO DI POSTI e poi, nelle colonne «Posto 1…», scegliete dal menu a tendina il nome dell'invitato (l'elenco si alimenta da «Invitati»).")
     row("   Tavoli tondi", "Da un minimo di 8 a un massimo di 11 persone per tavolo (bambini e neonati compresi). I posti sono numerati in senso orario partendo dal posto 1.")
     row("   Tavoli rettangolari", "I posti si dividono sui due lati lunghi: dal posto 1 si riempie il lato superiore da sinistra a destra (metà posti, +1 se dispari), poi il lato inferiore da sinistra a destra.")
     row("   Controlli automatici", "Colonna «Controllo»: segnala posti liberi / troppi invitati. Un nome ripetuto in due posti diventa rosso. In «Invitati» l'ultima colonna dice se la persona è già assegnata a un tavolo.")
-    row("Scadenze", "Le scelte di allestimento vanno confermate entro la data indicata dal vostro referente. Elenco invitati e tavoli: inviateci una prima versione appena possibile, potrete aggiornarla fino a pochi giorni prima dell'evento.")
+    row("Scadenze", "Da inviare a info@cateringlastella.com almeno 15 giorni prima dell'evento: numero definitivo di partecipanti (adulti, staff, bambini, neonati), allergie e intolleranze, composizione e nomi dei tavoli, seggiolini, attrezzatura per altri fornitori, eventuali extra time. Le scelte di allestimento vanno confermate entro la data indicata dal vostro referente.")
     r += 1
     wr.cell(row=r, column=2, value="Riepilogo automatico").font = Font(size=12, bold=True, color=INK)
     r += 1
@@ -245,6 +250,8 @@ def build(path, sample=False):
         ("   di cui adulti", f'=COUNTIF({iv},"Adulto")'),
         ("   di cui bambini", f'=COUNTIF({iv},"Bambino")'),
         ("   di cui neonati", f'=COUNTIF({iv},"Neonato")'),
+        ("   di cui staff", f'=COUNTIF({iv},"Staff")'),
+        ("Seggioloni richiesti", f'=COUNTIF(Invitati!$E$2:$E${last},"X")'),
         ("Tavoli compilati", f'=COUNTIF(Tavoli!$D$2:$D${tl},">0")'),
         ("Posti totali", f"=SUM(Tavoli!$D$2:$D${tl})"),
         ("Invitati ancora da assegnare", f'=COUNTIF(Invitati!${L(c_stato)}$2:${L(c_stato)}${last},"Da assegnare")'),
@@ -289,6 +296,8 @@ def fill_sample(ws, wt, c_all, c_int, c_other, c_note):
         people.append(uniq() + ("Bambino",))
     for i in range(2):
         people.append(uniq() + ("Neonato",))
+    for i in range(3):
+        people.append(uniq() + ("Staff",))
     rnd.shuffle(people)
     # esigenze speciali
     allergie_keys = [k for k, _ in ALLERGIE]
@@ -298,6 +307,8 @@ def fill_sample(ws, wt, c_all, c_int, c_other, c_note):
         ws.cell(row=r, column=1, value=n)
         ws.cell(row=r, column=2, value=c)
         ws.cell(row=r, column=3, value=f)
+        if f == "Bambino" and rnd.random() < 0.4:
+            ws.cell(row=r, column=5, value="X")
         x = rnd.random()
         if x < 0.07:
             ws.cell(row=r, column=4, value="Vegetariano")

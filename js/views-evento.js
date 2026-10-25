@@ -1,7 +1,7 @@
 /* =====================================================================
    Sezione 01 · EVENTO  → Questionario · Invitati · Tavoli e mappa
    ===================================================================== */
-VIEWS.evento = E => ({ questionario: viewQuestionario, invitati: viewInvitati, tavoli: viewTavoli }[ROUTE.sub] || viewQuestionario)(E);
+VIEWS.evento = E => ({ questionario: viewQuestionario, invitati: viewInvitati, tavoli: viewTavoli, consegne: viewConsegne }[ROUTE.sub] || viewQuestionario)(E);
 
 const F = (E, label, path, o = {}) => {
   const v = pget(E, path) ?? '';
@@ -23,8 +23,8 @@ HOOKS.listino = (el, v) => {
 /* ---------------------------------------------------------------- QUESTIONARIO */
 function viewQuestionario(E) {
   const q = E.q, g = giornoOf(E), cnt = guestCounts(E);
-  const sync = E.guests.length && (cnt.Adulto !== +q.adulti || cnt.Bambino !== +q.bambini || cnt.Neonato !== +q.neonati)
-    ? `<div class="alert info noprint">L'elenco invitati contiene <b>${cnt.Adulto}</b> adulti, <b>${cnt.Bambino}</b> bambini, <b>${cnt.Neonato}</b> neonati. <button class="btn sm alt" data-act="sync-counts">Allinea i numeri qui sotto</button></div>` : '';
+  const sync = E.guests.length && (cnt.Adulto !== +q.adulti || cnt.Bambino !== +q.bambini || cnt.Neonato !== +q.neonati || cnt.Staff !== (+q.staff || 0))
+    ? `<div class="alert info noprint">L'elenco invitati contiene <b>${cnt.Adulto}</b> adulti, <b>${cnt.Bambino}</b> bambini, <b>${cnt.Neonato}</b> neonati, <b>${cnt.Staff}</b> staff. <button class="btn sm alt" data-act="sync-counts">Allinea i numeri qui sotto</button></div>` : '';
   return `<div class="secthead"><div><h2>Questionario di conoscenza</h2><p>Le domande che il titolare pone a chi commissiona l'evento. Tutto si salva da solo.</p></div></div>
   <div class="card"><h3>1 · Chi siamo e come ci avete conosciuto</h3><div class="fields">
     ${F(E, 'Sposa / sposo (1)', 'q.sposo1')}${F(E, 'Sposa / sposo (2)', 'q.sposo2')}
@@ -53,19 +53,22 @@ function viewQuestionario(E) {
     ${F(E, 'Ospiti adulti (paganti per intero)', 'q.adulti', { type: 'number', min: 0, hint: 'Preventivo calcolato su minimo 100 adulti, minimo garantito 60.' })}
     ${F(E, 'Bambini (3–10 anni)', 'q.bambini', { type: 'number', min: 0 })}
     ${F(E, 'Neonati (0–2 anni)', 'q.neonati', { type: 'number', min: 0 })}
-    <div class="field"><label>Totale coperti</label><div class="counter" id="cop">${(+q.adulti || 0) + (+q.bambini || 0) + (+q.neonati || 0)}</div><span class="hint">Tavoli tondi: da 8 a 11 persone, bambini e neonati compresi.</span></div></div></div>
+    ${F(E, 'Staff / fornitori a tavola', 'q.staff', { type: 'number', min: 0 })}
+    ${F(E, 'Ospiti adulti garantiti da contratto', 'q.garantiti', { type: 'number', min: 0, hint: 'Se gli adulti effettivi sono meno, il compenso non scende (art. 2.3).' })}
+    <div class="field"><label>Totale coperti</label><div class="counter" id="cop">${(+q.adulti || 0) + (+q.bambini || 0) + (+q.neonati || 0) + (+q.staff || 0)}</div><span class="hint">Tavoli tondi: da 8 a 11 persone, bambini e neonati compresi.</span></div></div></div>
   <div class="card"><h3>5 · Altro da sapere</h3><div class="fields">
     ${F(E, 'Altri fornitori (foto, fiori, musica…)', 'q.fornitori', { area: 1, w2: 1 })}
     ${F(E, 'Accessibilità / ospiti con esigenze motorie', 'q.accessibilita', { area: 1, w2: 1 })}
     ${F(E, 'Note e desideri', 'q.note', { area: 1, wide: 1, ph: 'Tutto ciò che emerge nel colloquio…' })}</div></div>`;
 }
-ACTIONS['sync-counts'] = () => { const E = curEvent(), c = guestCounts(E); E.q.adulti = c.Adulto; E.q.bambini = c.Bambino; E.q.neonati = c.Neonato; save(); rr(); toast('Numeri allineati all\'elenco invitati'); };
+ACTIONS['sync-counts'] = () => { const E = curEvent(), c = guestCounts(E); E.q.adulti = c.Adulto; E.q.bambini = c.Bambino; E.q.neonati = c.Neonato; E.q.staff = c.Staff; save(); rr(); toast('Numeri allineati all\'elenco invitati'); };
 
 /* ---------------------------------------------------------------- icone esigenze */
 const aIc = k => CAT.allergie.find(x => x.k === k), iIc = k => CAT.intolleranze.find(x => x.k === k), dIc = k => CAT.diete.find(x => x.k === k);
 function iconsHtml(g, o = {}) {
   let h = '';
   if (!o.noFascia && g.fascia !== 'Adulto') { const f = CAT.fasce.find(x => x.k === g.fascia); h += `<span class="ic fa" title="${esc(f.label)}">${f.icon}</span>`; }
+  if (g.seggiolone) h += `<span class="ic fa" title="Seggiolone">🪑</span>`;
   g.allergie.forEach(k => { const a = aIc(k); h += `<span class="ic all" title="Allergia: ${esc(a.label)}">${a.icon}</span>`; });
   if (g.altro) h += `<span class="ic all txt" title="Altra allergia / intolleranza: ${esc(g.altro)}">⚠ ${esc(g.altro.length > 16 ? g.altro.slice(0, 15) + '…' : g.altro)}</span>`;
   g.intolleranze.forEach(k => { const a = iIc(k); h += `<span class="ic int" title="Intolleranza: ${esc(a.label)}">${a.icon}</span>`; });
@@ -73,7 +76,7 @@ function iconsHtml(g, o = {}) {
   return h ? `<span class="icons">${h}</span>` : '';
 }
 const legendHtml = () => `<div class="legend"><span><span class="ic all">🌾</span> Allergia</span><span><span class="ic int">🥛</span> Intolleranza</span><span><span class="ic die">🌱</span> Dieta / preferenza</span><span><span class="ic fa">🧒</span> Bambino · <span class="ic fa">🍼</span> Neonato</span></div>`;
-const guestTip = g => [fullName(g) + ' · ' + g.fascia, g.dieta && 'Dieta: ' + g.dieta, g.allergie.length && 'ALLERGIE: ' + g.allergie.map(k => aIc(k).label).join(', '), g.intolleranze.length && 'Intolleranze: ' + g.intolleranze.map(k => iIc(k).label).join(', '), g.altro && 'Altro: ' + g.altro, g.note && 'Note: ' + g.note].filter(Boolean).join('\n');
+const guestTip = g => [fullName(g) + ' · ' + g.fascia, g.dieta && 'Dieta: ' + g.dieta, g.seggiolone && 'Seggiolone', g.allergie.length && 'ALLERGIE: ' + g.allergie.map(k => aIc(k).label).join(', '), g.intolleranze.length && 'Intolleranze: ' + g.intolleranze.map(k => iIc(k).label).join(', '), g.altro && 'Altro: ' + g.altro, g.note && 'Note: ' + g.note].filter(Boolean).join('\n');
 
 /* ---------------------------------------------------------------- INVITATI */
 function viewInvitati(E) {
@@ -99,7 +102,7 @@ function viewInvitati(E) {
     <div class="row right noprint"><a class="btn alt" href="template/Invitati_e_Tavoli_La_Stella.xlsx" download>⭳ Scarica modello Excel</a>
     <label class="btn sand">⭱ Carica Excel<input type="file" id="xls-file" accept=".xlsx,.xls,.csv" hidden></label>
     <button class="btn" data-act="guest-new">＋ Invitato</button></div></div>
-  <div class="tiles"><div class="tile"><b>${c.tot}</b><span>Invitati</span></div><div class="tile"><b>${c.Adulto}</b><span>Adulti</span></div><div class="tile"><b>${c.Bambino}</b><span>Bambini</span></div><div class="tile"><b>${c.Neonato}</b><span>Neonati</span></div>
+  <div class="tiles"><div class="tile"><b>${c.tot}</b><span>Invitati</span></div><div class="tile"><b>${c.Adulto}</b><span>Adulti</span></div><div class="tile"><b>${c.Bambino}</b><span>Bambini</span></div><div class="tile"><b>${c.Neonato}</b><span>Neonati</span></div><div class="tile"><b>${c.Staff}</b><span>Staff</span></div><div class="tile"><b>${c.seggioloni}</b><span>Seggioloni</span></div>
     <div class="tile a"><b>${c.allergie}</b><span>Con allergie</span></div><div class="tile i"><b>${c.intolleranze}</b><span>Intolleranze</span></div><div class="tile d"><b>${Object.values(c.diete).reduce((a, b) => a + b, 0)}</b><span>Diete speciali</span></div></div>
   ${needs}
   ${E.guests.length ? `<div class="toolbar noprint"><input type="text" placeholder="Cerca per nome…" value="${esc(UI.guestQ)}" id="gq"><div class="chips">${filters.map(([k, l]) => `<button class="chip ${f === k ? 'on' : ''}" data-act="gfilter" data-v="${k}">${l}</button>`).join('')}</div>
@@ -123,6 +126,7 @@ function guestModal(g, isNew) {
   openModal(`<h3>${isNew ? 'Nuovo invitato' : esc(fullName(g))}</h3><form id="gf" data-id="${g.id}" data-new="${isNew ? 1 : ''}">
     <div class="fields"><div class="field"><label>Nome</label><input type="text" name="nome" value="${esc(g.nome)}" required></div><div class="field"><label>Cognome</label><input type="text" name="cognome" value="${esc(g.cognome)}"></div>
     <div class="field"><label>Fascia</label><select name="fascia">${CAT.fasce.map(f => `<option value="${f.k}" ${g.fascia === f.k ? 'selected' : ''}>${f.label}</option>`).join('')}</select></div>
+    <div class="field"><label>Seggiolone</label><label class="row" style="gap:6px;padding:8px 0"><input type="checkbox" name="segg" ${g.seggiolone ? 'checked' : ''}> serve un seggiolone</label></div>
     <div class="field"><label>Dieta / preferenza</label><select name="dieta"><option value="">Nessuna</option>${CAT.diete.map(d => `<option value="${d.k}" ${g.dieta === d.k ? 'selected' : ''}>${d.icon} ${d.label}</option>`).join('')}</select></div></div>
     <div class="sp"></div><h4>Allergie (14 allergeni)</h4><div class="checks">${chk('all', CAT.allergie, g.allergie)}</div>
     <div class="sp"></div><h4>Intolleranze</h4><div class="checks">${chk('int', CAT.intolleranze, g.intolleranze)}</div>
@@ -134,7 +138,7 @@ document.addEventListener('submit', e => {
   if (e.target.id !== 'gf') return; e.preventDefault();
   const E = curEvent(), fd = new FormData(e.target), f = e.target.dataset;
   const g = f.new ? newGuest() : E.guests.find(x => x.id === f.id);
-  Object.assign(g, { nome: fd.get('nome').trim(), cognome: fd.get('cognome').trim(), fascia: fd.get('fascia'), dieta: fd.get('dieta'), allergie: fd.getAll('all'), intolleranze: fd.getAll('int'), altro: fd.get('altro').trim(), note: fd.get('note').trim() });
+  Object.assign(g, { nome: fd.get('nome').trim(), cognome: fd.get('cognome').trim(), fascia: fd.get('fascia'), seggiolone: fd.has('segg'), dieta: fd.get('dieta'), allergie: fd.getAll('all'), intolleranze: fd.getAll('int'), altro: fd.get('altro').trim(), note: fd.get('note').trim() });
   if (f.new) E.guests.push(g);
   save(); closeModal(); rr();
 });
@@ -145,13 +149,13 @@ document.addEventListener('change', e => {
   const f = e.target.files[0]; e.target.value = ''; if (!f) return;
   f.arrayBuffer().then(buf => {
     let res; try { res = parseWorkbook(XLSX.read(buf, { type: 'array' })); } catch (err) { alert('Impossibile leggere il file: ' + err.message); return; }
-    const E = curEvent(), c = { Adulto: 0, Bambino: 0, Neonato: 0 }; res.guests.forEach(g => c[g.fascia]++);
+    const E = curEvent(), c = { Adulto: 0, Bambino: 0, Neonato: 0, Staff: 0 }; res.guests.forEach(g => c[g.fascia]++);
     const sp = res.guests.filter(hasSpecial).length, seated = res.tables.reduce((a, t) => a + t.seats.filter(Boolean).length, 0);
     window._import = res;
     openModal(`<h3>Anteprima importazione</h3><div class="tiles"><div class="tile"><b>${res.guests.length}</b><span>Invitati</span></div><div class="tile"><b>${c.Adulto}/${c.Bambino}/${c.Neonato}</b><span>Ad./Bamb./Neon.</span></div><div class="tile a"><b>${sp}</b><span>Con esigenze</span></div><div class="tile"><b>${res.tables.length}</b><span>Tavoli</span></div><div class="tile"><b>${seated}</b><span>Posti assegnati</span></div></div>
       ${res.warnings.length ? `<div class="alert">${res.warnings.length} avvisi da controllare:<ul class="warnlist">${res.warnings.map(w => `<li>${esc(w)}</li>`).join('')}</ul></div>` : '<div class="alert ok">Nessun problema rilevato.</div>'}
       ${E.guests.length ? `<p>Nell'evento ci sono già <b>${E.guests.length}</b> invitati e <b>${E.tables.length}</b> tavoli.</p>` : ''}
-      <label class="row" style="margin-top:10px"><input type="checkbox" id="imp-sync" checked> Aggiorna anche i numeri ospiti del questionario (${c.Adulto} adulti, ${c.Bambino} bambini, ${c.Neonato} neonati)</label>
+      <label class="row" style="margin-top:10px"><input type="checkbox" id="imp-sync" checked> Aggiorna anche i numeri ospiti del questionario (${c.Adulto} adulti, ${c.Bambino} bambini, ${c.Neonato} neonati, ${c.Staff} staff)</label>
       <div class="acts"><button class="btn alt" data-act="modal-close">Annulla</button>${E.guests.length ? '<button class="btn sand" data-act="imp-append">Aggiungi a quelli esistenti</button>' : ''}<button class="btn" data-act="imp-replace">${E.guests.length ? 'Sostituisci tutto' : 'Importa'}</button></div>`);
   });
 });
@@ -162,22 +166,22 @@ function doImport(replace) {
     E.guests.push(...r.guests); const base = E.tables.reduce((m, t) => Math.max(m, t.num || 0), 0);
     r.tables.forEach(t => { t.num = t.num + base; E.tables.push(t); });
   }
-  if ($('#imp-sync') && $('#imp-sync').checked) { const c = guestCounts(E); E.q.adulti = c.Adulto; E.q.bambini = c.Bambino; E.q.neonati = c.Neonato; }
+  if ($('#imp-sync') && $('#imp-sync').checked) { const c = guestCounts(E); E.q.adulti = c.Adulto; E.q.bambini = c.Bambino; E.q.neonati = c.Neonato; E.q.staff = c.Staff; }
   save(); closeModal(); window._import = null; toast(`Importati ${r.guests.length} invitati e ${r.tables.length} tavoli`); rr();
 }
 ACTIONS['imp-replace'] = () => doImport(true);
 ACTIONS['imp-append'] = () => doImport(false);
 
 ACTIONS['export-guests'] = () => {
-  const E = curEvent(), rows = [['Tavolo', 'Posto', 'Nome', 'Cognome', 'Fascia', 'Dieta', 'ALLERGIE', 'Intolleranze', 'Altro', 'Note']];
+  const E = curEvent(), rows = [['Tavolo', 'Posto', 'Nome', 'Cognome', 'Fascia', 'Dieta', 'Seggiolone', 'ALLERGIE', 'Intolleranze', 'Altro', 'Note']];
   const seatKey = g => { const s = seatOf(E, g.id); return s ? [s.t.num, s.i + 1] : [9999, 0]; };
   E.guests.slice().sort((a, b) => { const x = seatKey(a), y = seatKey(b); return x[0] - y[0] || x[1] - y[1]; }).forEach(g => {
     const s = seatOf(E, g.id);
-    rows.push([s ? (s.t.nome || 'Tavolo ' + s.t.num) : 'Da assegnare', s ? s.i + 1 : '', g.nome, g.cognome, g.fascia, g.dieta, g.allergie.map(k => aIc(k).label).join(', '), g.intolleranze.map(k => iIc(k).label).join(', '), g.altro, g.note]);
+    rows.push([s ? (s.t.nome || 'Tavolo ' + s.t.num) : 'Da assegnare', s ? s.i + 1 : '', g.nome, g.cognome, g.fascia, g.dieta, g.seggiolone ? 'SÌ' : '', g.allergie.map(k => aIc(k).label).join(', '), g.intolleranze.map(k => iIc(k).label).join(', '), g.altro, g.note]);
   });
-  const wb = XLSX.utils.book_new(); const ws = XLSX.utils.aoa_to_sheet(rows); ws['!cols'] = [18, 7, 14, 16, 10, 14, 30, 24, 20, 30].map(w => ({ wch: w }));
+  const wb = XLSX.utils.book_new(); const ws = XLSX.utils.aoa_to_sheet(rows); ws['!cols'] = [18, 7, 14, 16, 10, 14, 10, 30, 24, 20, 30].map(w => ({ wch: w }));
   XLSX.utils.book_append_sheet(wb, ws, 'Scheda cucina');
-  const sp = XLSX.utils.aoa_to_sheet([['Solo ospiti con esigenze', ''], ...rows.filter((r, i) => i === 0 || r[5] || r[6] || r[7] || r[8] || r[9])]); XLSX.utils.book_append_sheet(wb, sp, 'Solo esigenze');
+  const sp = XLSX.utils.aoa_to_sheet([['Solo ospiti con esigenze', ''], ...rows.filter((r, i) => i === 0 || r[5] || r[6] || r[7] || r[8] || r[9] || r[10])]); XLSX.utils.book_append_sheet(wb, sp, 'Solo esigenze');
   XLSX.writeFile(wb, `Scheda-cucina_${evName(E).replace(/\W+/g, '-')}.xlsx`);
 };
 
@@ -274,3 +278,37 @@ document.addEventListener('drop', e => {
   dragG = null; rr();
 });
 document.addEventListener('dragend', () => { dragG = null; $$('.over').forEach(x => x.classList.remove('over')); });
+
+/* ---------------------------------------------------------------- CONSEGNE (file da inviare 15 giorni prima) */
+function workdaysBefore(iso, n) { const d = new Date(iso + 'T12:00:00'); let c = 0; while (c < n) { d.setDate(d.getDate() - 1); if (d.getDay() % 6) c++; } return d; }
+const daysFrom = d => Math.ceil((d - new Date()) / 864e5);
+function viewConsegne(E) {
+  const q = E.q, k = E.consegne, c = guestCounts(E), n = E.tables.reduce((a, t) => a + t.seats.filter(Boolean).length, 0);
+  const sc = [];
+  if (q.data) {
+    const d15 = new Date(q.data + 'T12:00:00'); d15.setDate(d15.getDate() - 15);
+    sc.push(['60 giorni lavorativi prima', workdaysBefore(q.data, 60), 'Integrazioni al menù (Allegato A) e ai beni/materiali di allestimento (Allegato B) · art. 2.2 b']);
+    sc.push(['30° giorno lavorativo prima', workdaysBefore(q.data, 30), 'Soglia extra time: € 400/ora entro, € 1.000/ora dopo · art. 4']);
+    sc.push(['15 giorni prima', d15, 'Invio del file «da inviare 15 giorni prima»: numeri definitivi, allergie, tavoli, seggiolini, attrezzatura fornitori, extra time (FAQ 2027)']);
+    sc.push(['10 giorni lavorativi prima', workdaysBefore(q.data, 10), 'Pianta dei tavoli in scala, numero definitivo dei commensali, allergie e intolleranze · art. 2.2 c, d, f']);
+  }
+  const chk = (path, label, auto) => `<label class="row" style="gap:8px;align-items:flex-start;padding:6px 0"><input type="checkbox" data-b="${path}" data-r ${pget(E, path) ? 'checked' : ''}><span>${label}${auto ? `<div class="hint">${auto}</div>` : ''}</span></label>`;
+  const alle = c.allergie + c.intolleranze;
+  return `<div class="secthead"><div><h2>Consegne e scadenze</h2><p>Quello che il cliente deve far arrivare a La Stella (info@cateringlastella.com) entro 15 giorni dall'evento, più le altre scadenze contrattuali. Oltre quella data non si garantiscono disponibilità e tariffario dedicato.</p></div>
+    <div class="row right noprint"><button class="btn alt" data-act="export-guests">⭳ Scheda invitati (Excel)</button></div></div>
+  ${q.data ? `<div class="grid g4" style="margin-bottom:16px">${sc.map(([l, d, t]) => { const g = daysFrom(d); return `<div class="tile" title="${esc(t)}"><span>${l}</span><b style="font-size:24px">${d.toLocaleDateString('it-IT', { day: 'numeric', month: 'short', year: 'numeric' })}</b><span class="pill ${g < 0 ? 'bad' : g < 30 ? 'warn' : ''}" style="margin-top:6px">${g < 0 ? 'scaduta' : 'tra ' + g + ' gg'}</span></div>`; }).join('')}</div>
+    <p class="hint" style="margin:-6px 0 16px">I giorni lavorativi escludono sabato e domenica; le festività infrasettimanali non sono conteggiate. Passa il mouse su una scadenza per il dettaglio.</p>` : '<div class="alert">Inserisci la data dell\'evento nel Questionario per calcolare le scadenze.</div><div class="sp"></div>'}
+  <div class="card"><h3>Checklist da inviare</h3>
+    ${chk('consegne.numeriOk', '<b>Numero definitivo dei partecipanti, voi compresi</b>', `Adulti ${c.Adulto} · staff ${c.Staff} · bambini con menù bimbi ${c.Bambino} · neonati con pappe della mamma ${c.Neonato} · totale <b>${c.tot}</b> (questionario: ${(+q.adulti || 0) + (+q.bambini || 0) + (+q.neonati || 0) + (+q.staff || 0)})`)}
+    ${chk('consegne.allergieOk', '<b>Intolleranze e allergie</b> di sposi e ospiti', alle ? `${c.allergie} ospiti con allergie, ${c.intolleranze} con intolleranze: la cucina propone un'alternativa al solo menù principale (aperitivo e buffet restano invariati).` : 'Nessuna segnalata nell\'elenco invitati.')}
+    ${chk('consegne.tavoliOk', '<b>Composizione dei tavoli e nomi dei tavoli</b>', `${E.tables.length} tavoli, ${n}/${c.tot} invitati assegnati. Con i segnaposto serve l'elenco preciso dei commensali per tavolo.`)}
+    ${chk('consegne.disposizioneOk', '<b>Disposizione dei tavoli in sala</b> (pianta con riferimenti, es. porta d\'ingresso, WC)')}
+    <div class="fields" style="margin:6px 0 10px 26px"><div class="field"><label>Riferimenti per l'orientamento</label><input type="text" data-b="consegne.orientamento" value="${esc(k.orientamento)}" placeholder="es. ingresso lato nord, WC a destra"></div>
+      <div class="field"><label>Posizione degli sposi</label><input type="text" data-b="consegne.sposiLato" value="${esc(k.sposiLato)}"></div></div>
+    <div class="fields" style="margin-top:8px"><div class="field"><label>Seggiolini necessari</label><input type="number" data-b="consegne.seggiolini" value="${k.seggiolini === '' ? '' : k.seggiolini}" placeholder="${c.seggioloni} da elenco invitati"></div>
+      <div class="field w2"><label>Attrezzatura aggiuntiva per altri fornitori (es. tavolo DJ, allestitori, confettata)</label><input type="text" data-b="consegne.attrezzatura" value="${esc(k.attrezzatura)}"><span class="hint">Servizio a pagamento da tariffario, se richiesto entro i 15 giorni.</span></div>
+      <div class="field w2"><label>Notifica di eventuali extra time</label><input type="text" data-b="consegne.extratime" value="${esc(k.extratime)}"></div></div></div>
+  <div class="sp"></div>
+  <div class="card"><h3>Elenco fornitori</h3><table class="tb"><thead><tr><th>Ruolo</th><th>Nome del fornitore</th><th>Telefono</th><th>Email</th></tr></thead><tbody>
+    ${k.fornitori.map((f, i) => `<tr><td>${i >= 7 ? `<input type="text" data-b="consegne.fornitori.${i}.ruolo" value="${esc(f.ruolo)}">` : esc(f.ruolo)}</td><td><input type="text" data-b="consegne.fornitori.${i}.nome" value="${esc(f.nome)}"></td><td><input type="tel" data-b="consegne.fornitori.${i}.tel" value="${esc(f.tel)}"></td><td><input type="email" data-b="consegne.fornitori.${i}.email" value="${esc(f.email)}"></td></tr>`).join('')}</tbody></table></div>`;
+}

@@ -10,7 +10,7 @@ const HOOKS = {};
 const VIEWS = {};
 
 const SECS = [
-  { k: 'evento', n: '01', t: 'Evento', subs: [['questionario', 'Questionario'], ['invitati', 'Invitati'], ['tavoli', 'Tavoli e mappa']] },
+  { k: 'evento', n: '01', t: 'Evento', subs: [['questionario', 'Questionario'], ['invitati', 'Invitati'], ['tavoli', 'Tavoli e mappa'], ['consegne', 'Consegne 15 gg']] },
   { k: 'menu', n: '02', t: 'Menù', subs: [['aperitivo', 'Aperitivo'], ['tavola', 'A tavola'], ['dolci', 'Dolci e lounge'], ['speciali', 'Richieste speciali']] },
   { k: 'allestimento', n: '03', t: 'Allestimento' },
   { k: 'addon', n: '04', t: 'Add-on' },
@@ -53,6 +53,11 @@ function closeModal() { $('#modal-root').innerHTML = ''; }
 function rr() { const y = window.scrollY; render(false); window.scrollTo(0, y); }
 function render(top = true) {
   ROUTE = parseHash();
+  const app = $('.app');
+  if (CLOUD && AUTH.status !== 'ready') {
+    app.classList.add('noside'); $('#side').innerHTML = ''; $('#main').innerHTML = viewAuth(); document.title = 'Accesso · La Stella'; return;
+  }
+  app.classList.remove('noside');
   const E = curEvent();
   $('#side').innerHTML = sideHtml(E);
   let html;
@@ -71,7 +76,7 @@ function sideHtml(E) {
   }
   nav += `<div class="sep"></div><a href="#/settings" class="${ROUTE.view === 'settings' ? 'on' : ''}"><em>⚙</em>Impostazioni</a>`;
   return `<a class="wordmark" href="#/home"><b>LA STELLA</b><i>NEW CONCEPT BANQUETING</i></a><nav class="nav">${nav}</nav>
-  <div class="foot">Gestionale eventi · dati salvati su questo browser.<br>Esegui un backup dalle Impostazioni.</div>`;
+  <div class="foot"><div id="sync-ind">${syncHtml()}</div>${CLOUD && AUTH.user ? `<div style="margin-top:6px;word-break:break-all">${esc(AUTH.user.email)}</div>` : '<div style="margin-top:6px">Esegui un backup dalle Impostazioni.</div>'}</div>`;
 }
 
 function eventShell(E) {
@@ -79,7 +84,7 @@ function eventShell(E) {
   const c = completeness(E);
   const q = computeQuote(E);
   const tabs = sec.subs ? `<div class="tabs">${sec.subs.map(([k, t]) => `<a href="#/${evUrl(sec.k, k)}" class="${ROUTE.sub === k ? 'on' : ''}">${t}${k === 'invitati' && E.guests.length ? `<span class="badge">${E.guests.length}</span>` : ''}${k === 'speciali' && E.special.length ? `<span class="badge">${E.special.length}</span>` : ''}</a>`).join('')}</div>` : '<div class="sp"></div>';
-  const coperti = (+E.q.adulti || 0) + (+E.q.bambini || 0) + (+E.q.neonati || 0);
+  const coperti = (+E.q.adulti || 0) + (+E.q.bambini || 0) + (+E.q.neonati || 0) + (+E.q.staff || 0);
   const header = `<div class="evhead noprint">
     <div><div class="kicker">${esc(E.q.tipo)} · ${esc(E.q.pasto)}</div><h1>${esc(evName(E))}</h1>
     <div class="meta"><span>📅 <b>${esc(fmtDate(E.q.data))}</b></span><span>📍 <b>${esc(E.q.locationNome || '—')}</b></span><span>👥 <b>${coperti}</b> ospiti</span>
@@ -164,9 +169,10 @@ ACTIONS['dup-event'] = (el, ev) => {
   ev.stopPropagation(); const src = getEvent(el.dataset.id); const c = JSON.parse(JSON.stringify(src)); c.id = uid(); c.q.sposo1 = (c.q.sposo1 || 'Evento') + ' (copia)'; c.creato = new Date().toISOString();
   S.events.unshift(c); save(); rr(); toast('Evento duplicato');
 };
-ACTIONS['del-event'] = (el, ev) => {
+ACTIONS['del-event'] = async (el, ev) => {
   ev.stopPropagation(); const E = getEvent(el.dataset.id);
   if (!confirm(`Eliminare definitivamente «${evName(E)}»? L'operazione non è reversibile.`)) return;
+  if (CLOUD && !(await cloudDelete(E.id))) return;
   S.events = S.events.filter(x => x.id !== E.id); save(); go('home'); render();
 };
 ACTIONS['reset-sec'] = el => { /* riservata */ };
@@ -175,7 +181,7 @@ ACTIONS['reset-sec'] = el => { /* riservata */ };
 function viewHome() {
   const list = S.events.slice().sort((a, b) => (a.q.data || '9999').localeCompare(b.q.data || '9999'));
   const cards = list.map(E => {
-    const q = computeQuote(E), c = completeness(E), n = (+E.q.adulti || 0) + (+E.q.bambini || 0) + (+E.q.neonati || 0);
+    const q = computeQuote(E), c = completeness(E), n = (+E.q.adulti || 0) + (+E.q.bambini || 0) + (+E.q.neonati || 0) + (+E.q.staff || 0);
     const days = E.q.data ? Math.ceil((new Date(E.q.data + 'T12:00:00') - new Date()) / 864e5) : null;
     return `<div class="evcard" data-act="open-event" data-id="${E.id}">
       <div class="top"><small>${esc(E.q.tipo)} · ${esc(E.stato)}</small><h3>${esc(evName(E))}</h3></div>
@@ -185,13 +191,23 @@ function viewHome() {
         <div style="grid-column:1/-1"><span>Completezza ${c.pct}%</span><div class="progress"><i style="width:${c.pct}%"></i></div></div></div>
       <div class="ft"><button class="btn sm alt" data-act="dup-event" data-id="${E.id}">Duplica</button><button class="btn sm ghost right" data-act="del-event" data-id="${E.id}">Elimina</button></div></div>`;
   }).join('');
-  return `<div class="secthead"><div><h1>Eventi</h1><p>Tutte le pratiche in lavorazione. Ogni evento raccoglie questionario, invitati e tavoli, menù, allestimenti, add-on, preventivo e ricettario.</p></div>
+  const lo = CLOUD && AUTH.localOnly.length ? `<div class="alert info" style="margin-bottom:16px">Su questo browser ci sono <b>${AUTH.localOnly.length}</b> eventi creati prima del collegamento al cloud e non ancora condivisi. <button class="btn sm" data-act="upload-local">Carica nel cloud</button></div>` : '';
+  return lo + `<div class="secthead"><div><h1>Eventi</h1><p>Tutte le pratiche in lavorazione. Ogni evento raccoglie questionario, invitati e tavoli, menù, allestimenti, add-on, preventivo e ricettario.</p></div>
     <button class="btn right" data-act="new-event">＋ Nuovo evento</button></div>
     ${list.length ? `<div class="evcards">${cards}</div>` : `<div class="empty"><h3>Nessun evento</h3><p>Crea il primo evento per iniziare il questionario con i clienti.</p><button class="btn" data-act="new-event">＋ Nuovo evento</button> <button class="btn alt" data-act="load-demo">Carica evento di esempio</button></div>`}`;
 }
 ACTIONS['load-demo'] = () => {
+  // Evento di esempio ricavato dal contratto del 31/12/2025 (compenso € 15.520 + IVA): serve a verificare il motore dei prezzi.
   const E = newEvent();
-  Object.assign(E.q, { sposo1: 'Roberto', sposo2: 'Francesca', planner: 'Roberto Armentaro WP', data: '2027-06-19', pasto: 'Cena', rito: 'Simbolico', adulti: 100, bambini: 0, neonati: 0, scadenzaAllest: '2027-01-31', validita: '2025-12-20', note: 'Rito simbolico. Numero ospiti indicativo 100/120 (dato dal preventivo del 2 dicembre 2025).' });
+  Object.assign(E.q, { sposo1: 'Roberto', sposo2: 'Francesca', planner: 'Roberto Armentaro WP', data: '2027-06-19', pasto: 'Cena', rito: 'Rito simbolico', adulti: 90, garantiti: 90, bambini: 0, neonati: 0, locationNome: 'La Castella (AT)', scadenzaAllest: '2027-01-31', validita: '2025-12-20', note: 'Ricevimento dalle 16:30 alle 02:00. Rito simbolico. Numero ospiti indicativo 100/120 nel preventivo, 90 garantiti da contratto.' });
+  E.addons.buv_ben = { on: true, variante: 'base' }; E.addons.cocktail = { on: true, variante: '3h' };
+  E.econ.rettifiche.push({ desc: 'Sconto dedicato per l\'inserimento della totalità dei servizi aggiuntivi (−€ 2,00 × 90 ospiti)', importo: -180 });
+  E.pagamenti = [
+    { desc: 'Caparra confirmatoria alla firma', due: '2025-12-31', importo: 2000, paid: false },
+    { desc: 'Caparra confirmatoria (120 gg lavorativi prima)', due: '2026-06-20', importo: 2656, paid: false },
+    { desc: 'Caparra confirmatoria (120 gg lavorativi prima)', due: '2027-01-04', importo: 6208, paid: false },
+    { desc: 'Saldo (10 gg lavorativi prima)', due: '2027-06-07', importo: 4656, paid: false },
+  ];
   S.events.unshift(E); save(); go(`e/${E.id}/evento/questionario`);
 };
 
@@ -203,7 +219,7 @@ function viewSettings() {
   CAT.addons.forEach(a => { if (a.varianti) a.varianti.forEach(v => rows.push([`add:${a.id}:${v.id}`, `${a.nome} → ${v.nome.split(' · ')[0]}`, v.prezzo, '€ a persona'])); else if (a.prezzo && !a.link) rows.push([`add:${a.id}`, a.nome, a.prezzo, '€ a persona']); });
   return `<div class="secthead"><div><h1>Impostazioni</h1><p>Listini, IVA e prezzi di supplementi e add-on. I valori di partenza arrivano dal preventivo Diamante 2026: modificali quando cambia il listino.</p></div></div>
   <div class="card"><h3>Parametri generali</h3><div class="fields">
-    <div class="field"><label>Aliquota IVA %</label><input type="number" step="0.5" data-s data-b="iva" value="${s.iva}"><span class="hint">Il preventivo indica «iva nella misura di legge»: verifica l'aliquota applicabile.</span></div>
+    <div class="field"><label>Aliquota IVA %</label><input type="number" step="0.5" data-s data-b="iva" value="${s.iva}"><span class="hint">Dall'Allegato A: IVA 10% sulle quotazioni.</span></div>
     <div class="field"><label>Prezzo bambino (€ / persona)</label><input type="number" data-s data-b="bambinoPrezzo" value="${s.bambinoPrezzo}"><span class="hint">Non presente nel preventivo: da definire.</span></div>
     <div class="field"><label>Prezzo neonato (€ / persona)</label><input type="number" data-s data-b="neonatoPrezzo" value="${s.neonatoPrezzo}"></div>
     <div class="field"><label>Supplementi «a persona» calcolati su</label><select data-s data-b="supplementiSu" data-r><option value="adulti" ${s.supplementiSu === 'adulti' ? 'selected' : ''}>Ospiti adulti</option><option value="tutti" ${s.supplementiSu === 'tutti' ? 'selected' : ''}>Adulti + bambini</option></select></div></div></div>
@@ -212,8 +228,9 @@ function viewSettings() {
   <p class="hint">Regole da preventivo: prezzo a persona per minimo ${s.listini[0].minAdulti} adulti paganti; dal 101° ospite sconto di € ${s.listini[0].scontoOltre} solo con Cocktail bar; sotto i ${s.listini[0].minAdulti} adulti sconto di € ${s.listini[0].scontoMancante} per ogni ospite mancante (minimo garantito ${s.listini[0].minGarantito}).</p></div>
   <div class="card"><h3>Prezzi supplementi e add-on</h3><p class="hint">Lascia vuoto per usare il valore di listino.</p><table class="tb"><thead><tr><th>Voce</th><th class="num">Listino</th><th>Unità</th><th class="num">Tuo prezzo</th></tr></thead><tbody>
   ${rows.map(([k, l, d, u]) => `<tr><td>${esc(l)}</td><td class="num">${eur(d)}</td><td class="muted">${u}</td><td class="num"><input type="number" style="width:96px" data-s data-b="prezzi.${k}" value="${s.prezzi[k] ?? ''}" placeholder="${d}"></td></tr>`).join('')}</tbody></table></div>
-  <div class="card"><h3>Backup dei dati</h3><p class="muted">Gli eventi sono salvati nel browser di questo computer. Scarica un backup regolarmente, oppure per spostarli su un altro computer.</p>
-  <div class="row"><button class="btn" data-act="backup">⭳ Scarica backup (.json)</button><label class="btn alt">⭱ Ripristina da backup<input type="file" accept=".json" hidden id="restore-file"></label><button class="btn danger right" data-act="wipe">Cancella tutti i dati</button></div></div>`;
+  ${teamCard()}
+  <div class="card" style="margin-top:16px"><h3>Backup dei dati</h3><p class="muted">${CLOUD ? 'Gli eventi sono nel cloud condiviso. Puoi scaricare una copia di sicurezza in qualsiasi momento.' : 'Gli eventi sono salvati nel browser di questo computer. Scarica un backup regolarmente, oppure per spostarli su un altro computer.'}</p>
+  <div class="row"><button class="btn" data-act="backup">⭳ Scarica backup (.json)</button>${CLOUD ? '' : '<label class="btn alt">⭱ Ripristina da backup<input type="file" accept=".json" hidden id="restore-file"></label><button class="btn danger right" data-act="wipe">Cancella tutti i dati</button>'}</div></div>`;
 }
 ACTIONS.backup = () => { download(`lastella-backup-${new Date().toISOString().slice(0, 10)}.json`, new Blob([JSON.stringify(S, null, 1)], { type: 'application/json' })); };
 ACTIONS.wipe = () => { if (confirm('Cancellare TUTTI gli eventi e le impostazioni da questo browser?') && confirm('Sei davvero sicuro? Non si può annullare.')) { localStorage.removeItem(KEY); location.hash = '#/home'; location.reload(); } };
@@ -227,4 +244,5 @@ document.addEventListener('change', e => {
 });
 
 /* ---------------------------------------------------------------- boot */
-function boot() { window.addEventListener('hashchange', () => render()); render(); }
+ACTIONS['upload-local'] = () => uploadLocalOnly();
+async function boot() { window.addEventListener('hashchange', () => render()); render(); await cloudInit(); render(); }
