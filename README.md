@@ -2,7 +2,8 @@
 
 CRM per La Stella Catering (New Concept Banqueting), nello stile delle brochure Diamante 2026.
 App statica (HTML/CSS/JS, nessun build): apri `index.html` oppure servi la cartella (`python3 -m http.server`).
-I dati stanno nel `localStorage` del browser; backup/ripristino JSON dalle **Impostazioni**.
+In produzione (Netlify) i dati stanno su **Netlify Blobs** tramite la funzione `netlify/functions/api.mts`: login con password, team con approvazione, sincronizzazione tra colleghi (conflitti uniti per sezione, aggiornamenti ogni ~5 s). Aperto da file o con `LASTELLA_CONFIG.api` vuoto funziona in locale (dati nel browser).
+Prova in locale con backend incluso: `node tools/dev-server.mjs` (dati in memoria). Il primo utente registrato diventa amministratore; gli altri vanno approvati da Impostazioni → Team.
 
 ## Sezioni
 1. **Evento** – questionario (quando, dove, quanti, spazi Piano A/B), **invitati** (import Excel, icone di allergie / intolleranze / diete), **tavoli e mappa** (tondo/rettangolare, drag & drop, tooltip con tutte le particolarità).
@@ -17,6 +18,6 @@ I dati stanno nel `localStorage` del browser; backup/ripristino JSON dalle **Imp
 `esempio/Esempio_compilato.xlsx` è un file di prova con invitati fittizi. Entrambi si rigenerano con `python3 tools/make_excel.py`.
 
 ## Da verificare
-- Aliquota IVA (default 10 %), prezzo bambini/neonati (non presenti nel preventivo, default 0) – in Impostazioni.
+- Prezzo bambini/neonati (non presenti nel preventivo, default 0) – in Impostazioni.
 - Le ricette sono **bozze** ricavate dalle descrizioni del menù, senza grammature: le completa lo chef.
 - Il listino è quello del preventivo del 2 dicembre 2025 (La Castella); altri listini si aggiungono/modificano in Impostazioni.
