@@ -155,6 +155,7 @@ function recipeCard(E, x) {
   return `<details class="rcp ${d.pct === 100 ? 'done' : ''}" data-k="${r.id}" ${UI.open.has(r.id) ? 'open' : ''}><summary><div class="rn">${esc(r.name)}${tagHtml(r)}<small>${esc(r.desc)}</small></div>
     ${pill('🛒', p.ing)}${pill('🥣', p.semi)}${pill('🍽', p.asm)}<div class="progress" style="width:90px"><i style="width:${d.pct}%"></i></div><b style="width:38px;text-align:right">${d.pct}%</b></summary>
     <div class="body"><div><h4>🛒 Materia prima</h4>${ckList(r.id, 'ing', st.ing, porz, true)}</div><div><h4>🥣 Semilavorati</h4>${ckList(r.id, 'semi', st.semi, porz, false)}</div><div><h4>🍽 Composizione del piatto</h4>${ckList(r.id, 'asm', st.asm, porz, false)}</div>
+    ${r.proc ? `<div style="grid-column:1/-1"><h4>👨‍🍳 Procedimento</h4><div class="small" style="white-space:pre-wrap">${esc(r.proc)}</div></div>` : ''}
     <div class="row" style="grid-column:1/-1;border-top:1px solid #eee8e0;padding-top:10px"><label class="row" style="gap:6px">Porzioni <input type="number" style="width:84px" data-b="recipes.${r.id}.porz" data-r value="${st.porz ?? ''}" placeholder="${porz}"></label>
       <input type="text" style="flex:1;min-width:200px" data-b="recipes.${r.id}.note" value="${esc(st.note)}" placeholder="Note dello chef, procedimento, impiattamento…"><button class="btn ghost sm" data-act="rc-reset" data-rid="${r.id}">Ripristina bozza</button></div></div></details>`;
 }

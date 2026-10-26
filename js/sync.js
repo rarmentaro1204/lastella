@@ -7,7 +7,7 @@
    ===================================================================== */
 const CFG = window.LASTELLA_CONFIG || {};
 const CLOUD = !!CFG.api;
-const AUTH = { status: CLOUD ? 'loading' : 'local', user: null, admin: false, msg: '', mode: 'login', team: [], localOnly: [], sync: { state: 'ok' } };
+const AUTH = { status: CLOUD ? 'loading' : 'local', user: null, admin: false, cucina: false, msg: '', mode: 'login', team: [], localOnly: [], sync: { state: 'ok' } };
 const BASE = {}, REV = {};           // ultimo stato noto sul server (json string) e revisione, per evento
 const TOKEN_KEY = 'lastella-token', POLL_MS = 5000;
 let SBASE = null, SREV = 0, pushTimer = null, pushing = false, again = false, pendingRender = false, pollTimer = null;
@@ -48,7 +48,7 @@ async function cloudInit() {
   } catch (e) { AUTH.status = 'signedout'; AUTH.msg = 'Impossibile contattare il server: ' + (e.message || e); }
 }
 async function afterLogin(user) {
-  AUTH.user = user; AUTH.admin = user.role === 'admin'; AUTH.msg = '';
+  AUTH.user = user; AUTH.admin = user.role === 'admin'; AUTH.cucina = user.role === 'cucina'; AUTH.msg = '';
   if (!user.approved) { AUTH.status = 'pending'; return; }
   try { await cloudLoad(); startPolling(); AUTH.status = 'ready'; setSync('ok'); }
   catch (e) {
@@ -97,7 +97,7 @@ async function doPush() {
   try {
     for (const E of S.events.slice()) { const js = JSON.stringify(E); if (BASE[E.id] === js) continue; if (!touched) setSync('saving'); touched = true; await pushEvent(E.id); }
     const sj = JSON.stringify(S.settings);
-    if (SBASE !== sj) { if (!touched) setSync('saving'); touched = true; await pushSettings(); }
+    if (SBASE !== sj && !AUTH.cucina) { if (!touched) setSync('saving'); touched = true; await pushSettings(); }
     setSync('ok');
   } catch (e) {
     if (e.auth) { setToken(''); AUTH.status = 'signedout'; AUTH.msg = 'Sessione scaduta: accedi di nuovo.'; render(); }
@@ -214,14 +214,15 @@ ACTIONS['auth-recheck'] = async () => { const r = await http('GET', 'me'); if (r
 let teamBusy = false;
 async function syncTeam() { if (teamBusy || AUTH.status !== 'ready') return; teamBusy = true; const before = JSON.stringify(AUTH.team); try { await refreshTeam(); if (JSON.stringify(AUTH.team) !== before && ROUTE.view === 'settings') scheduleRender(); } finally { teamBusy = false; } }
 async function refreshTeam() { const r = await http('GET', 'team'); if (r.ok) AUTH.team = r.body.team; }
+const ROLE_LBL = { admin: 'Amministratore', staff: 'Operatore', cucina: 'Cucina (sola lettura)' };
 function teamCard() {
   if (!CLOUD) return `<div class="card"><h3>Team</h3><p class="muted">Modalità locale: i dati restano su questo browser. Pubblicato su Netlify, il gestionale permette di lavorare in più persone sugli stessi eventi.</p></div>`;
   const rows = AUTH.team.map(m => { const you = m.email === AUTH.user.email; return `<tr><td>${esc(m.email)}${you ? ' <span class="pill">tu</span>' : ''}</td>
-    <td>${m.approved ? (m.role === 'admin' ? 'Amministratore' : 'Operatore') : '<span class="pill warn">in attesa di approvazione</span>'}</td>
-    <td class="num">${AUTH.admin && !you ? `${!m.approved ? `<button class="btn sm" data-act="team-act" data-a="approve" data-e="${esc(m.email)}">Approva</button> ` : `<button class="btn sm alt" data-act="team-act" data-a="role" data-e="${esc(m.email)}" data-r="${m.role === 'admin' ? 'staff' : 'admin'}">${m.role === 'admin' ? 'Rendi operatore' : 'Rendi admin'}</button> `}<button class="btn sm alt" data-act="team-reset" data-e="${esc(m.email)}">Nuova password</button> <button class="btn ghost sm" data-act="team-act" data-a="remove" data-e="${esc(m.email)}">Rimuovi</button>` : ''}</td></tr>`; }).join('');
-  return `<div class="card"><h3>Team</h3><p class="muted">Accesso come <b>${esc(AUTH.user.email)}</b> (${AUTH.admin ? 'amministratore' : 'operatore'}). Tutti gli approvati vedono e modificano gli stessi eventi; gli aggiornamenti dei colleghi arrivano in pochi secondi.</p>
+    <td>${m.approved ? (ROLE_LBL[m.role] || m.role) : '<span class="pill warn">in attesa di approvazione</span>'}</td>
+    <td class="num">${AUTH.admin && !you ? `${!m.approved ? `<button class="btn sm" data-act="team-act" data-a="approve" data-e="${esc(m.email)}">Approva</button> ` : `<select class="sm" data-act-change="team-role" data-e="${esc(m.email)}" style="width:auto">${['admin', 'staff', 'cucina'].map(r => `<option value="${r}" ${m.role === r ? 'selected' : ''}>${ROLE_LBL[r]}</option>`).join('')}</select> `}<button class="btn sm alt" data-act="team-reset" data-e="${esc(m.email)}">Nuova password</button> <button class="btn ghost sm" data-act="team-act" data-a="remove" data-e="${esc(m.email)}">Rimuovi</button>` : ''}</td></tr>`; }).join('');
+  return `<div class="card"><h3>Team</h3><p class="muted">Accesso come <b>${esc(AUTH.user.email)}</b> (${(ROLE_LBL[AUTH.user.role] || '').toLowerCase()}). Tutti gli approvati vedono e modificano gli stessi eventi; gli aggiornamenti dei colleghi arrivano in pochi secondi.</p>
     <table class="tb"><thead><tr><th>Email</th><th>Stato</th><th></th></tr></thead><tbody>${rows}</tbody></table>
-    ${AUTH.admin ? `<h4 style="margin:18px 0 8px">Aggiungi un collega</h4><form id="teamf" class="row"><input type="email" name="email" placeholder="email" required style="max-width:260px"><input type="text" name="password" placeholder="password provvisoria (min. 8)" minlength="8" required style="max-width:260px"><select name="role" style="width:auto"><option value="staff">Operatore</option><option value="admin">Amministratore</option></select><button class="btn">＋ Crea account</button></form><p class="hint">Comunica la password provvisoria al collega: potrà cambiarla da qui sotto. In alternativa può registrarsi da solo e tu lo approvi dalla lista.</p>` : '<p class="hint">Solo gli amministratori possono approvare colleghi e gestire il team.</p>'}
+    ${AUTH.admin ? `<h4 style="margin:18px 0 8px">Aggiungi un collega</h4><form id="teamf" class="row"><input type="email" name="email" placeholder="email" required style="max-width:260px"><input type="text" name="password" placeholder="password provvisoria (min. 8)" minlength="8" required style="max-width:260px"><select name="role" style="width:auto"><option value="staff">Operatore</option><option value="admin">Amministratore</option><option value="cucina">Cucina (sola lettura)</option></select><button class="btn">＋ Crea account</button></form><p class="hint">Comunica la password provvisoria al collega: potrà cambiarla da qui sotto. In alternativa può registrarsi da solo e tu lo approvi dalla lista.</p>` : '<p class="hint">Solo gli amministratori possono approvare colleghi e gestire il team.</p>'}
     <div class="row" style="margin-top:14px"><button class="btn alt" data-act="pw-change">Cambia la mia password</button><button class="btn alt" data-act="signout">Esci dall'account</button></div></div>`;
 }
 document.addEventListener('submit', async e => {
@@ -244,3 +245,9 @@ ACTIONS['pw-change'] = async () => {
   const old = prompt('Password attuale:'); if (!old) return; const next = prompt('Nuova password (min. 8 caratteri):'); if (!next) return;
   const r = await http('POST', 'password', { old, next }); toast(r.ok ? 'Password cambiata' : (r.body.error || 'Errore'));
 };
+
+document.addEventListener('change', async e => {
+  const t = e.target; if (t.dataset.actChange !== 'team-role') return;
+  const r = await http('POST', 'team/role', { email: t.dataset.e, role: t.value }); if (!r.ok) toast(r.body.error || 'Errore');
+  await refreshTeam(); rr();
+});

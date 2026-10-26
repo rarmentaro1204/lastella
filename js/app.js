@@ -10,7 +10,7 @@ const HOOKS = {};
 const VIEWS = {};
 
 const SECS = [
-  { k: 'evento', n: '01', t: 'Evento', subs: [['questionario', 'Questionario'], ['invitati', 'Invitati'], ['tavoli', 'Tavoli e mappa'], ['consegne', 'Consegne 15 gg']] },
+  { k: 'evento', n: '01', t: 'Evento', subs: [['questionario', 'Questionario'], ['invitati', 'Invitati'], ['tavoli', 'Tavoli e mappa'], ['consegne', 'Consegne 15 gg'], ['portale', 'Accesso cliente']] },
   { k: 'menu', n: '02', t: 'Menù', subs: [['aperitivo', 'Aperitivo'], ['tavola', 'A tavola'], ['dolci', 'Dolci e lounge'], ['speciali', 'Richieste speciali']] },
   { k: 'allestimento', n: '03', t: 'Allestimento' },
   { k: 'addon', n: '04', t: 'Add-on' },
@@ -25,9 +25,12 @@ function parseHash() {
     const sec = SECS.find(s => s.k === h[2]) || SECS[0];
     return { view: 'event', id: h[1], sec: sec.k, sub: h[3] || (sec.subs ? sec.subs[0][0] : '') };
   }
+  if (typeof AUTH !== 'undefined' && AUTH.cucina && (h[0] === 'settings' || h[0] === 'catalog')) return { view: 'events' };
   if (h[0] === 'settings') return { view: 'settings', tab: h[1] || 'generale' };
   if (h[0] === 'catalog') return { view: 'catalog', year: +h[1] || new Date().getFullYear(), tab: h[2] || 'aperitivo' };
+  if (h[0] === 'ricettario') return { view: 'rlib', year: +h[1] || new Date().getFullYear() };
   if (h[0] === 'events') return { view: 'events' };
+  if (typeof AUTH !== 'undefined' && AUTH.cucina) return { view: 'events' };
   return { view: 'home' };
 }
 const go = p => { location.hash = '#/' + p; };
@@ -66,6 +69,7 @@ function render(top = true) {
   else if (ROUTE.view === 'events') html = viewEvents();
   else if (ROUTE.view === 'settings') html = viewSettings();
   else if (ROUTE.view === 'catalog') html = viewCatalog();
+  else if (ROUTE.view === 'rlib') html = viewRicettarioLib();
   else html = eventShell(E);
   $('#side').innerHTML = sideHtml(E);
   $('#main').innerHTML = html;
@@ -76,37 +80,42 @@ function render(top = true) {
 function sideHtml(E) {
   const on = v => (ROUTE.view === v ? 'on' : '');
   let nav = `<a href="#/home" class="${on('home')}"><em>◆</em>Dashboard</a><a href="#/events" class="${on('events')}"><em>☰</em>Eventi</a>`;
-  if (E) {
+  if (AUTH.cucina) nav = `<a href="#/events" class="${on('events')}"><em>☰</em>Eventi</a>`;
+  if (E && AUTH.cucina) nav += `<div class="sep"></div><div class="lbl">${esc(evName(E))}</div><a href="#/${evUrl('evento', 'invitati')}" class="${ROUTE.sec === 'evento' ? 'on' : ''}"><em>👥</em>Invitati e allergie</a><a href="#/${evUrl('ricettario')}" class="${ROUTE.sec === 'ricettario' ? 'on' : ''}"><em>06</em>Ricettario evento</a>`;
+  else if (E) {
     const lock = missingRequired(E).length;
     nav += `<div class="sep"></div><div class="lbl">${esc(evName(E))}</div>`;
     SECS.forEach(s => { const locked = lock && s.k !== 'evento'; nav += `<a href="#/${evUrl(s.k, s.subs ? s.subs[0][0] : '')}" class="${ROUTE.sec === s.k ? 'on' : ''} ${locked ? 'locked' : ''}" ${locked ? 'title="Compila prima i dati del committente 1"' : ''}><em>${s.n}</em>${s.t}${locked ? ' 🔒' : ''}</a>`; });
   }
-  nav += `<div class="sep"></div><a href="#/catalog/${new Date().getFullYear()}/aperitivo" class="${on('catalog')}"><em>✦</em>Catalogo menù</a><a href="#/settings" class="${on('settings')}"><em>⚙</em>Impostazioni</a>`;
+  nav += `<div class="sep"></div><a href="#/ricettario" class="${on('rlib')}"><em>🍳</em>Libreria ricette</a>`;
+  if (!AUTH.cucina) nav += `<a href="#/catalog/${new Date().getFullYear()}/aperitivo" class="${on('catalog')}"><em>✦</em>Catalogo menù</a><a href="#/settings" class="${on('settings')}"><em>⚙</em>Impostazioni</a>`;
   return `<a class="wordmark" href="#/home"><b>LA STELLA</b><i>NEW CONCEPT BANQUETING</i></a><nav class="nav">${nav}</nav>
   <div class="foot"><div id="sync-ind">${syncHtml()}</div>${CLOUD && AUTH.user ? `<div style="margin-top:6px;word-break:break-all">${esc(AUTH.user.email)}</div>` : '<div style="margin-top:6px">Esegui un backup dalle Impostazioni.</div>'}</div>`;
 }
 
 function eventShell(E) {
   const sec = SECS.find(s => s.k === ROUTE.sec);
-  const needQ = !(ROUTE.sec === 'evento' && ROUTE.sub === 'questionario');
+  const needQ = !(ROUTE.sec === 'evento' && ROUTE.sub === 'questionario') && !AUTH.cucina;
   if (needQ && missingRequired(E).length) {           // dati del committente 1 obbligatori per proseguire
     setTimeout(() => { toast('Compila prima nome, telefono ed email del committente 1'); location.replace('#/' + evUrl('evento', 'questionario')); }, 0);
     return '';
   }
-  if (E.q.data && autoDates(E)) save();
+  if (E.q.data && !AUTH.cucina && autoDates(E)) save();
   const c = completeness(E), q = computeQuote(E), cust = customizations(E);
-  const locked = !!missingRequired(E).length;
-  const tabs = sec.subs ? `<div class="tabs">${sec.subs.map(([k, t]) => `<a href="#/${evUrl(sec.k, k)}" class="${ROUTE.sub === k ? 'on' : ''} ${locked && !(sec.k === 'evento' && k === 'questionario') ? 'locked' : ''}">${t}${k === 'invitati' && E.guests.length ? `<span class="badge">${E.guests.length}</span>` : ''}${k === 'speciali' && E.special.length ? `<span class="badge">${E.special.length}</span>` : ''}</a>`).join('')}</div>` : '<div class="sp"></div>';
+  const locked = !AUTH.cucina && !!missingRequired(E).length;
+  const tabs = sec.subs && !AUTH.cucina ? `<div class="tabs">${sec.subs.map(([k, t]) => `<a href="#/${evUrl(sec.k, k)}" class="${ROUTE.sub === k ? 'on' : ''} ${locked && !(sec.k === 'evento' && k === 'questionario') ? 'locked' : ''}">${t}${k === 'invitati' && E.guests.length ? `<span class="badge">${E.guests.length}</span>` : ''}${k === 'speciali' && E.special.length ? `<span class="badge">${E.special.length}</span>` : ''}</a>`).join('')}</div>` : '<div class="sp"></div>';
   const coperti = (+E.q.adulti || 0) + (+E.q.bambini || 0) + (+E.q.neonati || 0) + (+E.q.staff || 0);
   const header = `<div class="evhead noprint">
     <div><div class="kicker">${esc(E.q.tipo)} · ${esc(E.q.pasto)}</div><h1>${esc(evName(E))}</h1>
     <div class="meta"><span>📅 <b>${esc(fmtDate(E.q.data))}</b></span><span>📍 <b>${esc(E.q.locationNome || '—')}</b></span><span>👥 <b>${coperti}</b> ospiti</span>
     <span>Completezza <b id="hd-pct">${c.pct}%</b></span>
     <select data-b="stato" data-hook="stato" data-r title="Stato pratica">${['Preventivo', 'Confermato', 'Definizione menù', 'Allestimenti', 'Pronto', 'Concluso', 'Annullato'].map(s => `<option ${E.stato === s ? 'selected' : ''}>${s}</option>`).join('')}</select>
+    ${typeof portalNew === 'function' && portalNew(E) ? `<a class="pill ok" href="#/${evUrl('evento', 'portale')}" title="Il cliente ha modificato le sue scelte">🔔 Modificato dal cliente</a>` : ''}
     ${cust.length ? `<a class="pill warn" id="hd-cust" href="#/${evUrl('economics')}" title="Vedi le customizzazioni">⚠ ${cust.length} customizzazioni</a>` : ''}</div></div>
-    <div class="tot"><small>Totale stimato (iva incl.)</small><strong id="hd-total">${eur(q.totale)}</strong></div></div>`;
+    ${AUTH.cucina ? '' : `<div class="tot"><small>Totale stimato (iva incl.)</small><strong id="hd-total">${eur(q.totale)}</strong></div>`}</div>`;
   const body = (VIEWS[sec.k] || (() => ''))(E);
-  return header + tabs + `<section>${body}</section>`;
+  const ro = AUTH.cucina && ROUTE.sec !== 'ricettario';
+  return header + tabs + `${ro ? '<div class="alert info">Sola lettura · profilo cucina</div>' : ''}<section ${ro ? 'inert' : ''}>${body}</section>`;
 }
 function refreshHeader() {
   const E = curEvent(); if (!E) return;

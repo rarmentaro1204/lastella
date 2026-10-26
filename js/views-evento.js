@@ -1,7 +1,7 @@
 /* =====================================================================
    Sezione 01 · EVENTO  → Questionario · Invitati · Tavoli e mappa
    ===================================================================== */
-VIEWS.evento = E => ({ questionario: viewQuestionario, invitati: viewInvitati, tavoli: viewTavoli, consegne: viewConsegne }[ROUTE.sub] || viewQuestionario)(E);
+VIEWS.evento = E => ({ questionario: viewQuestionario, invitati: viewInvitati, tavoli: viewTavoli, consegne: viewConsegne, portale: VIEWS.portale }[ROUTE.sub] || viewQuestionario)(E);
 
 /* ---------------------------------------------------------------- dati obbligatori */
 const isEmail = v => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(v || '').trim());

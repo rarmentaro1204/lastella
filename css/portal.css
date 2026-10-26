@@ -1,0 +1,36 @@
+:root { --navy:#2e3540; --sand:#a8907a; --sand-3:#e7ddd1; --paper:#f4f1ec; --line:#ddd6cc; --muted:#78716a; --ok:#4f7a4a; --okbg:#e4ecdd; --warn:#b4781d; --warnbg:#fbefd2; --bad:#b2412b; --serif:'Noto Serif Display',Georgia,serif; --sans:'Nunito Sans','Segoe UI',system-ui,sans-serif; }
+* { box-sizing:border-box; }
+body { margin:0; font-family:var(--sans); background:var(--paper); color:#23272e; font-size:15px; line-height:1.45; padding-bottom:90px; }
+.top { background:var(--navy); color:#fff; text-align:center; padding:18px 12px 14px; }
+.top b { display:block; font-family:var(--serif); font-weight:400; letter-spacing:.38em; font-size:22px; }
+.top i { display:block; font-style:normal; letter-spacing:.3em; font-size:9.5px; color:var(--sand); margin-top:4px; }
+main { max-width:860px; margin:0 auto; padding:20px 16px; }
+h1 { font-family:var(--serif); font-weight:400; font-size:30px; margin:6px 0 4px; color:var(--navy); }
+h2 { font-family:var(--serif); font-weight:400; font-size:22px; margin:0 0 6px; color:var(--navy); }
+h3 { font-size:14px; letter-spacing:.08em; text-transform:uppercase; color:var(--sand); margin:22px 0 8px; }
+h4 { margin:0 0 6px; }
+.muted { color:var(--muted); } .small { font-size:13px; }
+.card { background:#fff; border:1px solid var(--line); border-radius:8px; padding:16px; margin-bottom:14px; }
+.tabs { display:flex; gap:4px; overflow-x:auto; border-bottom:1px solid var(--line); margin:14px 0 18px; }
+.tabs button { background:none; border:0; border-bottom:3px solid transparent; padding:10px 14px; font:inherit; color:var(--muted); cursor:pointer; white-space:nowrap; }
+.tabs button.on { color:var(--navy); border-color:var(--sand); font-weight:700; }
+.opt { display:flex; gap:10px; align-items:flex-start; padding:9px 12px; border:1px solid var(--line); border-radius:6px; margin-bottom:6px; cursor:pointer; background:#fff; }
+.opt.on { border-color:var(--navy); box-shadow:0 0 0 1px var(--navy); background:#fbfaf8; }
+.opt input { margin-top:3px; } .opt .d { color:var(--muted); font-size:13px; }
+.opt.dis { opacity:.6; cursor:not-allowed; }
+.pill { display:inline-block; border-radius:20px; padding:2px 10px; font-size:12px; background:var(--sand-3); }
+.pill.ok { background:var(--okbg); color:var(--ok); } .pill.warn { background:var(--warnbg); color:var(--warn); }
+.alert { background:var(--warnbg); border-left:4px solid var(--warn); padding:10px 14px; border-radius:4px; margin-bottom:12px; font-size:14px; }
+.alert.ok { background:var(--okbg); border-color:var(--ok); }
+input[type=text], textarea, select { width:100%; font:inherit; padding:9px 10px; border:1px solid var(--line); border-radius:6px; background:#fff; }
+textarea { min-height:90px; }
+label.f { display:block; font-size:12px; color:var(--muted); margin-bottom:3px; }
+.row { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+.grid2 { display:grid; grid-template-columns:repeat(auto-fill,minmax(240px,1fr)); gap:10px; }
+.btn { background:var(--navy); color:#fff; border:0; border-radius:6px; padding:10px 18px; font:inherit; font-weight:600; cursor:pointer; }
+.btn.alt { background:#fff; color:var(--navy); border:1px solid var(--navy); } .btn.sm { padding:5px 12px; font-size:13px; }
+.btn:disabled { opacity:.5; cursor:not-allowed; }
+.bar { position:fixed; left:0; right:0; bottom:0; background:#fff; border-top:1px solid var(--line); padding:12px 16px; display:flex; gap:10px; justify-content:center; align-items:center; flex-wrap:wrap; box-shadow:0 -4px 16px rgba(0,0,0,.06); }
+.sw { display:inline-block; width:14px; height:14px; border-radius:50%; border:1px solid #ccc; vertical-align:-2px; margin-right:4px; }
+table { width:100%; border-collapse:collapse; } td,th { padding:6px 4px; text-align:left; vertical-align:top; font-size:14px; } th { font-size:12px; color:var(--muted); font-weight:600; }
+.chips { display:flex; flex-wrap:wrap; gap:5px; } .chip { border:1px solid var(--line); border-radius:16px; padding:2px 9px; font-size:12px; cursor:pointer; background:#fff; } .chip.on { background:var(--navy); color:#fff; border-color:var(--navy); }

@@ -1,5 +1,6 @@
 /* Backend del gestionale La Stella: utenti, eventi, impostazioni su un archivio chiave/valore.
    `stores` espone getStore(name) compatibile con @netlify/blobs (nei test è sostituito da una mappa in memoria). */
+import { newPortalToken, portalView, applyPortalEdit, kitchenEvent, kitchenSettings } from './portal.mjs';
 import { createHmac, randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
 
 const ID_RE = /^[A-Za-z0-9_-]{3,64}$/;
@@ -22,7 +23,8 @@ function checkPw(password, u) { const h = scryptSync(password, u.salt, 64); cons
 const publicUser = u => ({ email: u.email, role: u.role, approved: !!u.approved, created: u.created });
 
 export function createApi({ stores, secret, seed = null, now = () => new Date().toISOString() }) {
-  const users = stores('users'), events = stores('events'), meta = stores('meta');
+  const users = stores('users'), events = stores('events'), meta = stores('meta'), portal = stores('portal');
+  const ROLES = ['admin', 'staff', 'cucina'], roleOf = (r, d = 'staff') => (ROLES.includes(r) ? r : d);
 
   /* indice {events:{id:{rev,at,by}}, settings:{rev,at,by}|null} con scrittura condizionale */
   async function updateIndex(mutator) {
@@ -78,6 +80,24 @@ export function createApi({ stores, secret, seed = null, now = () => new Date().
       return out({ token: makeToken(secret, email), user: publicUser(u) });
     }
 
+    let pm;
+    if ((pm = path.match(/^portal\/([A-Za-z0-9_-]{20,80})$/)) && ['GET', 'PUT'].includes(method)) {
+      const link = await portal.get(pm[1], { type: 'json' }); if (!link) return err(404, 'Link non valido o revocato.');
+      const setts = async () => { const x = await meta.get('settings', { type: 'json' }); return x; };
+      for (let i = 0; i < 5; i++) {
+        const cur = await events.getWithMetadata(link.eventId, { type: 'json' }); if (!cur) return err(404, 'Evento non trovato.');
+        if (cur.data.portale && cur.data.portale.token !== pm[1]) return err(404, 'Link non valido o revocato.');
+        if (method === 'GET') return out({ event: portalView(cur.data, await setts()) });
+        const E = cur.data, at = now(), res = applyPortalEdit(E, body, at);
+        if (!res.changed.length) return out({ event: portalView(E, await setts()), denied: res.denied });
+        const rev = cur.metadata.rev + 1, r = await events.setJSON(link.eventId, E, { metadata: { rev, by: 'cliente', at }, onlyIfMatch: cur.etag });
+        if (!r.modified) continue;
+        await updateIndex(x => { x.events[link.eventId] = { rev, at, by: 'cliente' }; });
+        return out({ event: portalView(E, await setts()), denied: res.denied });
+      }
+      return err(409, 'Riprova tra un istante.');
+    }
+
     /* ---------- autenticati ---------- */
     const me = await authUser(req); if (!me) return err(401, 'Sessione scaduta: accedi di nuovo.');
     if (path === 'me') return out({ user: publicUser(me) });
@@ -87,7 +107,7 @@ export function createApi({ stores, secret, seed = null, now = () => new Date().
       await users.setJSON(me.email, { ...me, ...hashPw(String(body.next)) }); return out({ ok: true });
     }
     if (!me.approved) return err(403, 'Account in attesa di approvazione.', { pending: true });
-    const admin = me.role === 'admin';
+    const admin = me.role === 'admin', cucina = me.role === 'cucina';
 
     /* ---------- team ---------- */
     if (path === 'team' && method === 'GET') {
@@ -99,19 +119,35 @@ export function createApi({ stores, secret, seed = null, now = () => new Date().
       const email = String(body.email || '').trim().toLowerCase(), act = path.slice(5);
       if (act === 'add') {
         if (!EMAIL_RE.test(email) || String(body.password || '').length < 8) return err(400, 'Servono un\'email valida e una password di almeno 8 caratteri.');
-        const rec = { email, ...hashPw(String(body.password)), role: body.role === 'admin' ? 'admin' : 'staff', approved: true, created: now() };
+        const rec = { email, ...hashPw(String(body.password)), role: roleOf(body.role), approved: true, created: now() };
         const r = await users.setJSON(email, rec, { onlyIfNew: true }); if (!r.modified) return err(409, 'Indirizzo già presente.');
         return out({ user: publicUser(rec) });
       }
       const u = await users.get(email, { type: 'json' }); if (!u) return err(404, 'Utente non trovato.');
-      if (act === 'approve') { await users.setJSON(email, { ...u, approved: true, role: body.role === 'admin' ? 'admin' : (body.role === 'staff' ? 'staff' : u.role) }); return out({ ok: true }); }
+      if (act === 'approve') { await users.setJSON(email, { ...u, approved: true, role: roleOf(body.role, u.role) }); return out({ ok: true }); }
       if (act === 'role') {
         if (email === me.email) return err(400, 'Non puoi cambiare il tuo ruolo.');
-        await users.setJSON(email, { ...u, role: body.role === 'admin' ? 'admin' : 'staff' }); return out({ ok: true });
+        await users.setJSON(email, { ...u, role: roleOf(body.role) }); return out({ ok: true });
       }
       if (act === 'reset') { if (String(body.password || '').length < 8) return err(400, 'Password di almeno 8 caratteri.'); await users.setJSON(email, { ...u, ...hashPw(String(body.password)) }); return out({ ok: true }); }
       if (act === 'remove') { if (email === me.email) return err(400, 'Non puoi rimuovere te stesso.'); await users.delete(email); return out({ ok: true }); }
       return err(404, 'Operazione sconosciuta.');
+    }
+
+    if (path.startsWith('portal/') && method === 'POST') {
+      if (cucina) return err(403, 'Non consentito.');
+      const id = String(body.id || ''), act = path.slice(7), cur = ID_RE.test(id) ? await events.getWithMetadata(id, { type: 'json' }) : null;
+      if (!cur) return err(404, 'Evento non trovato.');
+      if (act !== 'create' && act !== 'revoke') return err(404, 'Operazione sconosciuta.');
+      const E = cur.data; E.portale = E.portale || {};
+      if (E.portale.token) await portal.delete(E.portale.token);
+      if (act === 'create') { E.portale.token = newPortalToken(); E.portale.attivo = true; E.portale.creato = now(); await portal.setJSON(E.portale.token, { eventId: id }); }
+      else { delete E.portale.token; E.portale.attivo = false; }
+      const rev = cur.metadata.rev + 1, at = now();
+      const r = await events.setJSON(id, E, { metadata: { rev, by: me.email, at }, onlyIfMatch: cur.etag });
+      if (!r.modified) return err(409, 'Evento modificato nel frattempo, riprova.');
+      await updateIndex(i => { i.events[id] = { rev, at, by: me.email }; });
+      return out({ rev, token: E.portale.token || null });
     }
 
     /* ---------- dati ---------- */
@@ -120,13 +156,23 @@ export function createApi({ stores, secret, seed = null, now = () => new Date().
       const idx = await getIndex();
       const rows = await Promise.all(Object.keys(idx.events).map(async id => { const e = await events.getWithMetadata(id, { type: 'json' }); return e && { id, rev: e.metadata.rev, data: e.data, by: e.metadata.by, at: e.metadata.at }; }));
       const st = await meta.getWithMetadata('settings', { type: 'json' });
-      return out({ events: rows.filter(Boolean), settings: st ? { rev: st.metadata.rev, data: st.data, by: st.metadata.by } : null, index: idx });
+      const list = rows.filter(Boolean).map(r => (cucina ? { ...r, data: kitchenEvent(r.data) } : r));
+      return out({ events: list, settings: st ? { rev: st.metadata.rev, data: cucina ? kitchenSettings(st.data) : st.data, by: st.metadata.by } : null, index: idx });
     }
     let m;
     if ((m = path.match(/^event\/([^/]+)$/))) {
       const id = m[1]; if (!ID_RE.test(id)) return err(400, 'Identificativo non valido.');
       const cur = await events.getWithMetadata(id, { type: 'json' });
-      if (method === 'GET') return cur ? out({ id, rev: cur.metadata.rev, data: cur.data, by: cur.metadata.by, at: cur.metadata.at }) : err(404, 'Evento non trovato.');
+      if (cucina && method === 'PUT') {
+        if (!cur || !body.data || typeof body.data.recipes !== 'object') return err(400, 'Dati non validi.');
+        const E = cur.data; E.recipes = body.data.recipes;
+        const rev = cur.metadata.rev + 1, at = now(), r = await events.setJSON(id, E, { metadata: { rev, by: me.email, at }, onlyIfMatch: cur.etag });
+        if (!r.modified) { const c2 = await events.getWithMetadata(id, { type: 'json' }); return err(409, 'Conflitto', { current: c2 && { id, rev: c2.metadata.rev, data: kitchenEvent(c2.data), by: c2.metadata.by, at: c2.metadata.at } }); }
+        await updateIndex(i => { i.events[id] = { rev, at, by: me.email }; });
+        return out({ rev, at });
+      }
+      if (cucina && method !== 'GET') return err(403, 'Il profilo cucina è in sola lettura.');
+      if (method === 'GET') return cur ? out({ id, rev: cur.metadata.rev, data: cucina ? kitchenEvent(cur.data) : cur.data, by: cur.metadata.by, at: cur.metadata.at }) : err(404, 'Evento non trovato.');
       if (method === 'DELETE') {
         if (!admin) return err(403, 'Solo un amministratore può eliminare gli eventi.');
         await events.delete(id); await updateIndex(i => { delete i.events[id]; }); return out({ ok: true });
@@ -145,7 +191,8 @@ export function createApi({ stores, secret, seed = null, now = () => new Date().
     }
     if (path === 'settings') {
       const cur = await meta.getWithMetadata('settings', { type: 'json' });
-      if (method === 'GET') return out(cur ? { rev: cur.metadata.rev, data: cur.data } : { rev: 0, data: null });
+      if (cucina && method !== 'GET') return err(403, 'Il profilo cucina è in sola lettura.');
+      if (method === 'GET') return out(cur ? { rev: cur.metadata.rev, data: cucina ? kitchenSettings(cur.data) : cur.data } : { rev: 0, data: null });
       if (method === 'PUT') {
         const baseRev = Number(body.rev) || 0, curRev = cur ? cur.metadata.rev : 0;
         if (curRev !== baseRev) return err(409, 'Conflitto', { current: { rev: curRev, data: cur && cur.data } });

@@ -145,7 +145,7 @@ function viewSettings() {
       <td><select ${sb(`scadenziario.${i}.quando`)}>${[['firma', 'dopo la firma del contratto'], ['giorniPrima', 'giorni di calendario prima dell\'evento'], ['lavorativiPrima', 'giorni lavorativi prima dell\'evento']].map(([k, l]) => `<option value="${k}" ${r.quando === k ? 'selected' : ''}>${l}</option>`).join('')}</select></td>
       <td class="num"><input type="number" style="width:76px" ${sb(`scadenziario.${i}.n`)} value="${r.n}"></td><td>${delBtn('scadenziario', i, '✕')}</td></tr>`).join('')}</tbody></table>
     <p class="hint" style="margin-top:8px">Esempio dal contratto (€ 15.520): € 2.000 alla firma → completa al 30 % un anno prima (€ 2.656) → 40 % a 120 giorni lavorativi (€ 6.208) → saldo a 10 giorni lavorativi (€ 4.656).</p></div>`;
-  return head + teamCard() + demoCard() + `<div class="card" style="margin-top:16px"><h3>Backup dei dati</h3><p class="muted">${CLOUD ? 'Gli eventi sono nel cloud condiviso. Puoi scaricare una copia di sicurezza in qualsiasi momento.' : 'Gli eventi sono salvati nel browser di questo computer. Scarica un backup regolarmente, oppure per spostarli su un altro computer.'}</p>
+  return head + teamCard() + dataCard() + demoCard() + `<div class="card" style="margin-top:16px"><h3>Backup dei dati</h3><p class="muted">${CLOUD ? 'Gli eventi sono nel cloud condiviso. Puoi scaricare una copia di sicurezza in qualsiasi momento.' : 'Gli eventi sono salvati nel browser di questo computer. Scarica un backup regolarmente, oppure per spostarli su un altro computer.'}</p>
   <div class="row"><button class="btn" data-act="backup">⭳ Scarica backup (.json)</button>${CLOUD ? '' : '<label class="btn alt">⭱ Ripristina da backup<input type="file" accept=".json" hidden id="restore-file"></label><button class="btn danger right" data-act="wipe">Cancella tutti i dati</button>'}</div></div>`;
 }
 document.addEventListener('change', e => {
@@ -172,7 +172,8 @@ function recEditor(base, arr, i, r, noActions) {
   return `<details class="cedit" data-k="${path}" ${UI.open.has(path) ? 'open' : ''}><summary><span style="flex:1">${esc(r.name)}${tagHtml(r)}</span>${noActions ? '' : `<button class="btn ghost sm" data-act="cat-move" data-path="${base}" data-i="${i}" data-d="-1" title="Su">↑</button><button class="btn ghost sm" data-act="cat-move" data-path="${base}" data-i="${i}" data-d="1" title="Giù">↓</button>${delBtn(base, i)}`}</summary>
     <div class="fields" style="margin-top:12px">${tin('Nome del piatto', `${path}.name`, r.name, { w2: 1 })}${tin('Etichette (vegano, vegetariano…)', `${path}.tags`, (r.tags || []).join(', '), { ph: 'separate da virgola' }).replace('data-s data-b', 'data-csv data-s data-b')}
       <div class="field wide"><label>Descrizione (come appare nel menù)</label><input type="text" ${sb(`${path}.desc`)} value="${esc(r.desc || '')}"></div></div>
-    <div class="grid g3" style="margin-top:8px">${tarea('Materie prime (una per riga)', `${path}.ing`, r.ing)}${tarea('Semilavorati (una per riga)', `${path}.semi`, r.semi)}${tarea('Composizione del piatto (una per riga)', `${path}.asm`, r.asm)}</div></details>`;
+    <div class="grid g3" style="margin-top:8px">${tarea('Materie prime (una per riga)', `${path}.ing`, r.ing)}${tarea('Semilavorati (una per riga)', `${path}.semi`, r.semi)}${tarea('Composizione del piatto (una per riga)', `${path}.asm`, r.asm)}</div>
+    <div style="margin-top:8px">${tarea('Procedimento e note di cucina (visibili allo staff nel ricettario)', `${path}.proc`, r.proc || '', 'text', { wide: 1 })}</div></details>`;
 }
 const recList = (base, arr) => (arr || []).map((r, i) => recEditor(base, arr, i, r)).join('') + `<div style="margin-top:8px">${addBtn(base, 'recipe', '＋ Aggiungi piatto')}</div>`;
 const strList = (base, arr, label) => `<div class="card"><h4 style="margin-bottom:8px">${label}</h4>${(arr || []).map((x, i) => `<div class="mini-row"><input type="text" style="flex:1" ${sb(`${base}.${i}`)} value="${esc(x)}">${delBtn(base, i, '✕')}</div>`).join('')}${addBtn(base, 'str', '＋ Aggiungi')}</div>`;
@@ -323,3 +324,41 @@ ACTIONS['demo-clear'] = async () => {
   S.events = S.events.filter(e => !isDemo(e)); S.settings.locations = S.settings.locations.filter(l => !l.demo); save(); toast('Eventi di esempio eliminati'); go('home'); rr();
 };
 const demoCard = () => { const n = S.events.filter(isDemo).length; return `<div class="card" style="margin-top:16px"><h3>Dati dimostrativi</h3><p class="muted">40 eventi bozza per mostrare le funzioni: 10 nel 2026 e 30 da marzo a settembre 2027 (75 % matrimoni, il resto mix di altri eventi), con stati, menù, allestimenti, add-on, richieste speciali, rate e alcuni elenchi invitati.${n ? ` Al momento ci sono <b>${n}</b> eventi di esempio.` : ''}</p><div class="row">${n < 40 ? '<button class="btn sand" data-act="demo-40">＋ Aggiungi i 40 eventi di esempio</button>' : ''}${n ? `<button class="btn danger" data-act="demo-clear">Elimina gli eventi di esempio (${n})</button>` : ''}</div></div>`; };
+
+/* ---------------------------------------------------------------- Ricettario (libreria per lo staff di cucina) */
+const RL = { q: '', sec: '' };
+function rlibGroups(C) {
+  const g = [];
+  C.isole.forEach(i => g.push([`Aperitivo · ${i.nome}`, i.items]));
+  g.push(['Pre-entrée', C.preEntree], ['Entrée', C.entree]);
+  C.primi.forEach(p => g.push([`Primi · ${p.gruppo}`, p.items]));
+  g.push(['Secondi', C.secondi], ['Formaggi', C.formaggi], ['Dessert', [...C.dessert, ...(C.torta ? [C.torta] : [])]], ['Lounge · dolci', C.lounge.dolci], ['Menù bambini', (C.menuBimbi || {}).items || []]);
+  return g.filter(([, a]) => a && a.length);
+}
+function viewRicettarioLib() {
+  const cur = new Date().getFullYear(), y = ROUTE.year, C = catalogByYear(y), q = norm(RL.q);
+  const years = [...new Set([cur, cur + 1, ...Object.keys(S.settings.catalogs).map(Number)])].sort();
+  const groups = rlibGroups(C), top = [...new Set(groups.map(([n]) => n.split(' · ')[0]))];
+  const body = groups.filter(([n]) => !RL.sec || n.split(' · ')[0] === RL.sec).map(([n, arr]) => {
+    const f = arr.filter(r => !q || norm(r.name + ' ' + (r.desc || '') + ' ' + (r.ing || []).join(' ')).includes(q)); if (!f.length) return '';
+    return `<div class="secbar"><h3>${esc(n)}</h3><span class="muted small">${f.length} ricette</span></div>${f.map(r => `<details class="rcp"><summary><div class="rn">${esc(r.name)}${tagHtml(r)}<small>${esc(r.desc || '')}</small></div></summary>
+      <div class="body"><div><h4>🛒 Materia prima</h4><ul class="small">${(r.ing || []).map(x => `<li>${esc(x)}</li>`).join('') || '<li class="muted">—</li>'}</ul></div><div><h4>🥣 Semilavorati</h4><ul class="small">${(r.semi || []).map(x => `<li>${esc(x)}</li>`).join('') || '<li class="muted">—</li>'}</ul></div><div><h4>🍽 Composizione</h4><ul class="small">${(r.asm || []).map(x => `<li>${esc(x)}</li>`).join('') || '<li class="muted">—</li>'}</ul></div>
+      <div style="grid-column:1/-1"><h4>👨‍🍳 Procedimento</h4><div class="small" style="white-space:pre-wrap">${r.proc ? esc(r.proc) : '<span class="muted">Nessun procedimento inserito.</span>'}</div></div></div></details>`).join('')}`;
+  }).join('');
+  return `<div class="secthead"><div><h1>Libreria ricette</h1><p>Tutte le ricette del menù ${y}: ingredienti, semilavorati, composizione e procedimento. ${AUTH.cucina ? '' : 'Per modificarle o aggiungere il procedimento vai in <a href="#/catalog/' + y + '/aperitivo">Catalogo menù</a>.'}</p></div><button class="btn alt noprint" onclick="window.print()">Stampa</button></div>
+  <div class="row noprint" style="margin-bottom:10px">${years.map(yy => `<a class="btn ${yy === y ? '' : 'alt'}" href="#/ricettario/${yy}">${yy}</a>`).join('')}</div>
+  <div class="toolbar noprint"><input type="text" id="rlq" placeholder="Cerca per nome o ingrediente…" value="${esc(RL.q)}"><select id="rlsec" style="width:auto"><option value="">Tutte le sezioni</option>${top.map(t => `<option ${RL.sec === t ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select></div>
+  ${body || '<div class="empty">Nessuna ricetta corrisponde alla ricerca.</div>'}`;
+}
+document.addEventListener('input', e => { if (e.target.id === 'rlq') { RL.q = e.target.value; const p = e.target.selectionStart; rr(); const n = $('#rlq'); if (n) { n.focus(); n.setSelectionRange(p, p); } } });
+document.addEventListener('change', e => { if (e.target.id === 'rlsec') { RL.sec = e.target.value; rr(); } });
+
+/* ---------------------------------------------------------------- Dove sono i dati */
+function dataCard() {
+  return `<div class="card" style="margin-top:16px"><h3>Dove sono salvati i dati</h3>
+    ${CLOUD ? `<ul class="small" style="line-height:1.7"><li><b>Archivio principale</b>: Netlify Blobs, il database del tuo sito Netlify (progetto «lastella-gestionale»). Contiene eventi, impostazioni/cataloghi e account del team.</li>
+      <li><b>Password</b>: salvate solo come hash (scrypt), nessuno, nemmeno io, può leggerle.</li>
+      <li><b>Copia nel browser</b>: ogni computer tiene una copia per lavorare anche con connessione instabile; si risincronizza da sola.</li>
+      <li><b>Link clienti</b>: il cliente scrive solo nel proprio evento, mai negli altri.</li>
+      <li><b>Backup</b>: scarica regolarmente il file JSON qui sotto, è la tua assicurazione.</li></ul>` : '<p class="muted small">Modalità locale: i dati sono solo nel browser di questo computer. Scarica il backup qui sotto.</p>'}</div>`;
+}
