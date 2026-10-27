@@ -121,6 +121,7 @@ function draw() {
   const y = scrollY;
   $('#app').innerHTML = `<div class="muted small" style="text-align:center">${esc(EV.q.tipo || '')}</div><h1 style="text-align:center">${esc([EV.q.sposo1, EV.q.sposo2].filter(Boolean).join(' & '))}</h1>
     <div class="tabs">${TABS.map(([k, t]) => `<button class="${tab === k ? 'on' : ''}" data-tab="${k}">${t}</button>`).join('')}</div>${view()}`;
+  document.querySelector('main').classList.toggle('wide', tab === 'tavoli');
   const b = $('#bar'); b.hidden = tab === 'home' && !dirty;
   b.innerHTML = `${msg ? `<span class="${msg.startsWith('✓') ? '' : 'muted'}">${esc(msg)}</span>` : dirty ? '<span class="muted">Modifiche non salvate</span>' : ''}<button class="btn" data-save ${dirty && !saving ? '' : 'disabled'}>${saving ? 'Salvataggio…' : 'Salva le modifiche'}</button>`;
   scrollTo(0, y);

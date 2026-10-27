@@ -35,3 +35,4 @@ label.f { display:block; font-size:12px; color:var(--muted); margin-bottom:3px; 
 .sw { display:inline-block; width:14px; height:14px; border-radius:50%; border:1px solid #ccc; vertical-align:-2px; margin-right:4px; }
 table { width:100%; border-collapse:collapse; } td,th { padding:6px 4px; text-align:left; vertical-align:top; font-size:14px; } th { font-size:12px; color:var(--muted); font-weight:600; }
 .chips { display:flex; flex-wrap:wrap; gap:5px; } .chip { border:1px solid var(--line); border-radius:16px; padding:2px 9px; font-size:12px; cursor:pointer; background:#fff; } .chip.on { background:var(--navy); color:#fff; border-color:var(--navy); }
+main.wide { max-width: 1400px; }

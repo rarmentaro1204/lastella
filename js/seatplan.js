@@ -25,15 +25,15 @@ const SeatPlan = (() => {
     return o;
   }
   const flagHtml = (f, max) => { const shown = f.slice(0, max || 99), more = f.length - shown.length; return shown.map(([i, l, c]) => `<span class="fl ${c}">${i} ${esc(l)}</span>`).join('') + (more > 0 ? `<span class="fl">+${more}</span>` : ''); };
-  const S = { sel: null, selT: null, q: '', tab: 'free', det: true, zoom: 0.75 };
+  const S = { sel: null, selT: null, q: '', tab: 'free', det: true, zoom: 0.75, auto: true };
   let drag = null;
   const H = () => (SeatPlan.host ? SeatPlan.host() : null);
   const msg = (h, m) => (h.toast ? h.toast(m) : alert(m));
 
   /* ---- geometria ---- */
   const LW = 104, LH = 58;
-  function geometry(t) {
-    const n = t.seats.length, det = S.det;
+  function geometry(t, detOverride) {
+    const n = t.seats.length, det = detOverride === undefined ? S.det : detOverride;
     if (!det) {
       if (t.forma !== 'rett') {
         const R = Math.max(58, Math.ceil(n * 44 / (2 * Math.PI))), size = 2 * (R + 26), c = size / 2, d = 2 * (R - 26);
@@ -57,7 +57,7 @@ const SeatPlan = (() => {
     const pos = t.seats.map((_, i) => i < top ? [10 + step / 2 + i * step, sy1] : [10 + step / 2 + (i - top) * step, sy2]);
     return { w, h, table: { x: 8, y: ty, w: w - 16, h: 38, round: false }, pos, lab: pos.map((p, i) => [p[0], i < top ? p[1] - 17 - 6 - LH / 2 : p[1] + 17 + 6 + LH / 2]) };
   }
-  const HEAD = 30, size = t => { const g = geometry(t); return { w: g.w, h: g.h + HEAD }; };
+  const HEAD = 30, size = t => { const g = geometry(t, true); return { w: g.w, h: g.h + HEAD }; };   // ingombro sempre «con nomi»: le posizioni non dipendono dalla modalità di visualizzazione
   const hit = (a, b) => a.x < b.x + b.w + 14 && b.x < a.x + a.w + 14 && a.y < b.y + b.h + 14 && b.y < a.y + a.h + 14;
   function findSpot(tables, s, skip) {
     const others = tables.filter(t => t !== skip && Number.isFinite(t.x) && Number.isFinite(t.y)).map(t => ({ x: t.x, y: t.y, ...size(t) }));
@@ -150,7 +150,8 @@ const SeatPlan = (() => {
   const tabsHtml = h => { const nf = h.guests.filter(g => !seatOf(h, g.id)).length; return `<button class="${S.tab === 'free' ? 'on' : ''}" data-spa="tab" data-v="free">Da assegnare <i>${nf}</i></button><button class="${S.tab === 'all' ? 'on' : ''}" data-spa="tab" data-v="all">Tutti <i>${h.guests.length}</i></button>`; };
 
   function html(h) {
-    ensurePos(h, true); const [w, ht] = roomSize(h);
+    if (ensurePos(h, !h.fixed) && h.change && !h.fixed) h.change();      // le posizioni calcolate vengono salvate: stessa sala per tutti
+    const [w, ht] = roomSize(h); setTimeout(autoFit, 0);
     return `<div class="spw" id="sp-root"><aside class="sp-list noprint"><input type="text" id="sp-q" placeholder="🔍 Cerca invitato…" value="${esc(S.q)}" autocomplete="off"><div class="sp-tabs" id="sp-tabs">${tabsHtml(h)}</div><div class="sp-items" id="sp-items">${listHtml(h)}</div>
       <p class="hint" style="margin:6px 2px 0">${h.ro ? 'Sola lettura.' : h.fixed ? 'Trascina un invitato su un posto (o toccalo e poi tocca il posto). Trascina un invitato seduto su un altro posto per scambiarli, o qui per liberarlo. I tavoli sono disposti da La Stella.' : 'Trascina un invitato su un posto (o toccalo e poi tocca il posto). Trascina il tavolo dal suo titolo per spostarlo in sala. Trascina un invitato seduto su un altro posto per scambiarli, o qui per liberarlo.'}</p></aside>
       <section class="sp-main"><div class="sp-bar noprint">${h.ro || h.fixed ? '' : `<button class="btn alt sm" data-spa="add" data-f="tondo">＋ Tavolo tondo <small>(8–12)</small></button><button class="btn alt sm" data-spa="add" data-f="rett">＋ Tavolo rettangolare</button><button class="btn sand sm" data-spa="auto">Assegna automaticamente</button><button class="btn alt sm" data-spa="reflow" title="Rimette in ordine i tavoli in sala">Riordina</button>`}<button class="btn alt sm" data-spa="det" title="Mostra o nasconde nomi ed esigenze accanto ai posti">${S.det ? '☑' : '☐'} Nomi ed esigenze</button>${h.print ? '<button class="btn alt sm" data-spa="print">🖨 Stampa</button>' : ''}<span class="sp-zoom" title="Zoom (anche Ctrl + rotellina)"><button data-spa="zout">−</button><b id="sp-zl">${Math.round(S.zoom * 100)}%</b><button data-spa="zin">＋</button><button data-spa="zfit">Adatta</button></span><span class="sp-stats" id="sp-stats">${statsHtml(h)}</span></div>
@@ -164,8 +165,10 @@ const SeatPlan = (() => {
     root.querySelector('#sp-items').innerHTML = listHtml(h); root.querySelector('#sp-tabs').innerHTML = tabsHtml(h); root.querySelector('#sp-stats').innerHTML = statsHtml(h);
   }
   const setZoom = z => { S.zoom = Math.max(.25, Math.min(1.6, Math.round(z * 100) / 100)); refresh(); };
-  function fitZoom(h) { const cv = document.getElementById('sp-canvas'), [w, ht] = roomSize(h); return cv ? Math.min((cv.clientWidth - 4) / w, 1.2) : 1; }
+  function fitZoom(h) { const cv = document.getElementById('sp-canvas'), [w, ht] = roomSize(h); return cv && cv.clientWidth > 50 ? Math.min((cv.clientWidth - 4) / w, 1.2) : S.zoom; }
   document.addEventListener('wheel', e => { if (!e.ctrlKey || !e.target.closest || !e.target.closest('#sp-canvas')) return; e.preventDefault(); setZoom(S.zoom + (e.deltaY < 0 ? .08 : -.08)); }, { passive: false });
+  function autoFit() { const h = H(); if (!h || !S.auto || !document.getElementById('sp-canvas')) return; const z = Math.max(.5, Math.min(1, fitZoom(h))); if (Math.abs(z - S.zoom) > .01) setZoom(z); }
+  window.addEventListener('resize', () => { if (S.auto) autoFit(); });
   const commit = h => { if (h.change) h.change(); refresh(); };
 
   /* ---- interazione ---- */
@@ -176,7 +179,7 @@ const SeatPlan = (() => {
     if (a === 'tab') { S.tab = b.dataset.v; refresh(); return; }
     if (a === 'print') { window.print(); return; }
     if (a === 'det') { S.det = !S.det; if (ensurePos(h, true) && h.change) h.change(); refresh(); return; }
-    if (a === 'zin' || a === 'zout' || a === 'zfit') { setZoom(a === 'zin' ? S.zoom + .1 : a === 'zout' ? S.zoom - .1 : fitZoom(h)); return; }
+    if (a === 'zin' || a === 'zout' || a === 'zfit') { S.auto = a === 'zfit'; setZoom(a === 'zin' ? S.zoom + .1 : a === 'zout' ? S.zoom - .1 : fitZoom(h)); return; }
     if (h.ro || h.fixed) return;
     if (a === 'add') { addTable(h, b.dataset.f); commit(h); }
     else if (a === 'auto') { autoSeat(h); commit(h); }
