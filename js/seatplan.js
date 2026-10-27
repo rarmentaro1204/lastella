@@ -25,7 +25,7 @@ const SeatPlan = (() => {
     return o;
   }
   const flagHtml = (f, max) => { const shown = f.slice(0, max || 99), more = f.length - shown.length; return shown.map(([i, l, c]) => `<span class="fl ${c}">${i} ${esc(l)}</span>`).join('') + (more > 0 ? `<span class="fl">+${more}</span>` : ''); };
-  const S = { sel: null, selT: null, q: '', tab: 'free', det: true };
+  const S = { sel: null, selT: null, q: '', tab: 'free', det: true, zoom: 0.75 };
   let drag = null;
   const H = () => (SeatPlan.host ? SeatPlan.host() : null);
   const msg = (h, m) => (h.toast ? h.toast(m) : alert(m));
@@ -64,7 +64,16 @@ const SeatPlan = (() => {
     for (let y = 16; y < 4000; y += 20) for (let x = 16; x <= 1500 - s.w; x += 20) if (!others.some(o => hit({ x, y, ...s }, o))) return { x, y };
     return { x: 16, y: 16 };
   }
-  function ensurePos(h) { let ch = false; h.tables.forEach(t => { if (!Number.isFinite(t.x) || !Number.isFinite(t.y)) { Object.assign(t, findSpot(h.tables, size(t), t)); ch = true; } }); return ch; }
+  /* posiziona i tavoli senza coordinate e sposta quelli che si sovrappongono ad altri */
+  function ensurePos(h, resolve) {
+    let ch = false; const placed = [], bad = t => !Number.isFinite(t.x) || !Number.isFinite(t.y);
+    h.tables.slice().sort((a, b) => (bad(a) - bad(b)) || (a.num - b.num)).forEach(t => {
+      const sz = size(t);
+      if (bad(t) || (resolve && placed.some(o => hit({ x: t.x, y: t.y, ...sz }, o)))) { Object.assign(t, findSpot(placed.map(o => o.t), sz, t)); ch = true; }
+      placed.push({ x: t.x, y: t.y, ...sz, t });
+    });
+    return ch;
+  }
 
   /* ---- logica dei posti ---- */
   const seatOf = (h, gid) => { for (const t of h.tables) { const i = t.seats.indexOf(gid); if (i >= 0) return { t, i }; } return null; };
@@ -141,18 +150,22 @@ const SeatPlan = (() => {
   const tabsHtml = h => { const nf = h.guests.filter(g => !seatOf(h, g.id)).length; return `<button class="${S.tab === 'free' ? 'on' : ''}" data-spa="tab" data-v="free">Da assegnare <i>${nf}</i></button><button class="${S.tab === 'all' ? 'on' : ''}" data-spa="tab" data-v="all">Tutti <i>${h.guests.length}</i></button>`; };
 
   function html(h) {
-    ensurePos(h); const [w, ht] = roomSize(h);
+    ensurePos(h, true); const [w, ht] = roomSize(h);
     return `<div class="spw" id="sp-root"><aside class="sp-list noprint"><input type="text" id="sp-q" placeholder="🔍 Cerca invitato…" value="${esc(S.q)}" autocomplete="off"><div class="sp-tabs" id="sp-tabs">${tabsHtml(h)}</div><div class="sp-items" id="sp-items">${listHtml(h)}</div>
       <p class="hint" style="margin:6px 2px 0">${h.ro ? 'Sola lettura.' : 'Trascina un invitato su un posto (o toccalo e poi tocca il posto). Trascina il tavolo dal suo titolo per spostarlo in sala. Trascina un invitato seduto su un altro posto per scambiarli, o qui per liberarlo.'}</p></aside>
-      <section class="sp-main"><div class="sp-bar noprint">${h.ro ? '' : `<button class="btn alt sm" data-spa="add" data-f="tondo">＋ Tavolo tondo <small>(8–11)</small></button><button class="btn alt sm" data-spa="add" data-f="rett">＋ Tavolo rettangolare</button><button class="btn sand sm" data-spa="auto">Assegna automaticamente</button><button class="btn alt sm" data-spa="reflow" title="Rimette in ordine i tavoli in sala">Riordina</button>`}<button class="btn alt sm" data-spa="det" title="Mostra o nasconde nomi ed esigenze accanto ai posti">${S.det ? '☑' : '☐'} Nomi ed esigenze</button>${h.print ? '<button class="btn alt sm" data-spa="print">🖨 Stampa</button>' : ''}<span class="sp-stats" id="sp-stats">${statsHtml(h)}</span></div>
-      <div class="sp-canvas" id="sp-canvas"><div class="sp-room" id="sp-room" style="width:${w}px;height:${ht}px">${roomHtml(h)}</div></div></section></div>`;
+      <section class="sp-main"><div class="sp-bar noprint">${h.ro ? '' : `<button class="btn alt sm" data-spa="add" data-f="tondo">＋ Tavolo tondo <small>(8–11)</small></button><button class="btn alt sm" data-spa="add" data-f="rett">＋ Tavolo rettangolare</button><button class="btn sand sm" data-spa="auto">Assegna automaticamente</button><button class="btn alt sm" data-spa="reflow" title="Rimette in ordine i tavoli in sala">Riordina</button>`}<button class="btn alt sm" data-spa="det" title="Mostra o nasconde nomi ed esigenze accanto ai posti">${S.det ? '☑' : '☐'} Nomi ed esigenze</button>${h.print ? '<button class="btn alt sm" data-spa="print">🖨 Stampa</button>' : ''}<span class="sp-zoom" title="Zoom (anche Ctrl + rotellina)"><button data-spa="zout">−</button><b id="sp-zl">${Math.round(S.zoom * 100)}%</b><button data-spa="zin">＋</button><button data-spa="zfit">Adatta</button></span><span class="sp-stats" id="sp-stats">${statsHtml(h)}</span></div>
+      <div class="sp-canvas" id="sp-canvas"><div class="sp-zw" id="sp-zw" style="width:${w * S.zoom}px;height:${ht * S.zoom}px"><div class="sp-room" id="sp-room" style="width:${w}px;height:${ht}px;transform:scale(${S.zoom})">${roomHtml(h)}</div></div></div></section></div>`;
   }
   function refresh() {
     const h = H(), root = document.getElementById('sp-root'); if (!h || !root) return;
     ensurePos(h); const [w, ht] = roomSize(h), room = root.querySelector('#sp-room');
-    room.style.width = w + 'px'; room.style.height = ht + 'px'; room.innerHTML = roomHtml(h);
+    room.style.width = w + 'px'; room.style.height = ht + 'px'; room.style.transform = `scale(${S.zoom})`; room.innerHTML = roomHtml(h);
+    const zw = root.querySelector('#sp-zw'); zw.style.width = w * S.zoom + 'px'; zw.style.height = ht * S.zoom + 'px'; const zl = root.querySelector('#sp-zl'); if (zl) zl.textContent = Math.round(S.zoom * 100) + '%';
     root.querySelector('#sp-items').innerHTML = listHtml(h); root.querySelector('#sp-tabs').innerHTML = tabsHtml(h); root.querySelector('#sp-stats').innerHTML = statsHtml(h);
   }
+  const setZoom = z => { S.zoom = Math.max(.25, Math.min(1.6, Math.round(z * 100) / 100)); refresh(); };
+  function fitZoom(h) { const cv = document.getElementById('sp-canvas'), [w, ht] = roomSize(h); return cv ? Math.min((cv.clientWidth - 4) / w, 1.2) : 1; }
+  document.addEventListener('wheel', e => { if (!e.ctrlKey || !e.target.closest || !e.target.closest('#sp-canvas')) return; e.preventDefault(); setZoom(S.zoom + (e.deltaY < 0 ? .08 : -.08)); }, { passive: false });
   const commit = h => { if (h.change) h.change(); refresh(); };
 
   /* ---- interazione ---- */
@@ -162,7 +175,8 @@ const SeatPlan = (() => {
     const t = h.tables.find(x => x.id === b.dataset.t), a = b.dataset.spa;
     if (a === 'tab') { S.tab = b.dataset.v; refresh(); return; }
     if (a === 'print') { window.print(); return; }
-    if (a === 'det') { S.det = !S.det; refresh(); return; }
+    if (a === 'det') { S.det = !S.det; if (ensurePos(h, true) && h.change) h.change(); refresh(); return; }
+    if (a === 'zin' || a === 'zout' || a === 'zfit') { setZoom(a === 'zin' ? S.zoom + .1 : a === 'zout' ? S.zoom - .1 : fitZoom(h)); return; }
     if (h.ro) return;
     if (a === 'add') { addTable(h, b.dataset.f); commit(h); }
     else if (a === 'auto') { autoSeat(h); commit(h); }
@@ -177,7 +191,7 @@ const SeatPlan = (() => {
   const down = e => {
     const h = H(), root = e.target.closest && e.target.closest('#sp-root'); if (!h || !root || e.button > 0) return;
     if (e.target.closest('input,select,textarea,button')) return;
-    const seat = e.target.closest('.sp-seat[data-g]'), chip = e.target.closest('.sp-chip'), th = e.target.closest('[data-tdrag]'), emptySeat = e.target.closest('.sp-seat');
+    const seat = e.target.closest('.sp-seat[data-g]'), chip = e.target.closest('.sp-chip'), th = e.target.closest('[data-tdrag]') || (!e.target.closest('.sp-seat,.sp-tc') && e.target.closest('.sp-tbl') ? { dataset: { tdrag: e.target.closest('.sp-tbl').dataset.tbl } } : null), emptySeat = e.target.closest('.sp-seat');
     drag = { x0: e.clientX, y0: e.clientY, on: false, id: e.pointerId };
     if (seat && !h.ro) Object.assign(drag, { kind: 'guest', gid: seat.dataset.g, src: seat });
     else if (chip && !h.ro) Object.assign(drag, { kind: 'guest', gid: chip.dataset.g, src: chip });
@@ -204,7 +218,7 @@ const SeatPlan = (() => {
       (s || tb) && (s || tb).classList.add('over');
     } else if (drag.kind === 'table' && cv) {
       const r = cv.getBoundingClientRect(); if (e.clientX > r.right - 40) cv.scrollLeft += 18; else if (e.clientX < r.left + 40) cv.scrollLeft -= 18; if (e.clientY > r.bottom - 40) cv.scrollTop += 18; else if (e.clientY < r.top + 40) cv.scrollTop -= 18;
-      drag.nx = Math.max(0, Math.round(drag.tx + dx)); drag.ny = Math.max(0, Math.round(drag.ty + dy)); drag.el.style.left = drag.nx + 'px'; drag.el.style.top = drag.ny + 'px';
+      drag.nx = Math.max(0, Math.round(drag.tx + dx / S.zoom)); drag.ny = Math.max(0, Math.round(drag.ty + dy / S.zoom)); drag.el.style.left = drag.nx + 'px'; drag.el.style.top = drag.ny + 'px';
     }
   }
   function finish() { document.removeEventListener('pointermove', move); document.removeEventListener('pointerup', up); document.removeEventListener('pointercancel', cancel); document.body.classList.remove('sp-dragging'); document.querySelectorAll('.sp-seat.over,.sp-tbl.over,.lifted').forEach(x => x.classList.remove('over', 'lifted')); if (drag && drag.ghost) drag.ghost.remove(); drag = null; }

@@ -47,3 +47,10 @@ body.sp-dragging { user-select: none; -webkit-user-select: none; cursor: grabbin
 @media (max-width: 800px) { .spw { grid-template-columns: minmax(0, 1fr); } .sp-list { position: static; max-height: 320px; } .sp-canvas { height: 60vh; } }
 @media print { .spw { display: block; } .sp-list, .sp-tc { display: none !important; } .sp-canvas { height: auto; overflow: visible; border: 0; background: none; } }
 .sp-main { min-width: 0; }
+
+.sp-zw { position: relative; }
+.sp-room { transform-origin: 0 0; }
+.sp-tbl .sp-map { cursor: move; }
+.sp-zoom { display: inline-flex; align-items: center; gap: 4px; }
+.sp-zoom button { border: 1px solid var(--line, #ddd6cc); background: #fff; border-radius: 6px; padding: 3px 10px; font: inherit; cursor: pointer; }
+.sp-zoom b { min-width: 44px; text-align: center; font-size: 13px; }
