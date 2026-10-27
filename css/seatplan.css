@@ -13,8 +13,12 @@
 .sp-chip.sel { border-color: var(--navy, #2e3540); box-shadow: 0 0 0 2px var(--navy, #2e3540); }
 .sp-chip .tg { font-size: 11px; background: var(--sand-3, #e7ddd1); border-radius: 10px; padding: 1px 7px; }
 .sp-chip .tg.t { background: #dfe8da; }
-.sp-chip .fl { font-size: 11px; border-radius: 10px; padding: 1px 7px; background: #f7e1da; color: #b2412b; }
-.sp-chip .fl.si { background: #fbefd2; color: #b4781d; } .sp-chip .fl.sd { background: #e4ecdd; color: #4f7a4a; }
+.fl { display: inline-block; font-size: 10.5px; line-height: 1.25; border-radius: 9px; padding: 1px 6px; margin: 1px 2px 0 0; background: #f7e1da; color: #b2412b; white-space: nowrap; }
+.fl.si { background: #fbefd2; color: #b4781d; } .fl.sd { background: #e4ecdd; color: #4f7a4a; }
+.fls { margin-top: 1px; }
+.sp-lab { position: absolute; transform: translate(-50%, -50%); text-align: center; font-size: 11px; line-height: 1.2; pointer-events: none; color: var(--ink, #23272e); }
+.sp-lab b { font-weight: 700; } .sp-lab .fls { display: flex; flex-wrap: wrap; justify-content: center; }
+.sp-seat .bd { position: absolute; right: -8px; top: -10px; font-size: 12px; background: #fff; border-radius: 50%; width: 18px; height: 18px; display: grid; place-items: center; box-shadow: 0 0 0 1px #00000026; color: #000; }
 .sp-bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 8px; }
 .sp-bar small { opacity: .7; } .sp-stats { margin-left: auto; display: flex; gap: 14px; font-size: 13px; color: var(--muted, #78716a); }
 .sp-canvas { overflow: auto; border: 1px solid var(--line, #ddd6cc); border-radius: 8px; height: 68vh; min-height: 420px; background: #fbfaf7 radial-gradient(#e8e1d6 1px, transparent 1px) 0 0 / 20px 20px; }

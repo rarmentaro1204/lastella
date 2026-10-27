@@ -14,26 +14,54 @@ const SeatPlan = (() => {
   const arr = a => (Array.isArray(a) ? a : []);
   const flag = g => (arr(g.allergie).length || g.altro ? 'sa' : arr(g.intolleranze).length ? 'si' : g.dieta ? 'sd' : '');
   const tip = g => [full(g) + ' · ' + g.fascia, g.dieta && 'Dieta: ' + g.dieta, g.seggiolone && 'Seggiolone', arr(g.allergie).length && 'ALLERGIE: ' + g.allergie.join(', '), arr(g.intolleranze).length && 'Intolleranze: ' + g.intolleranze.join(', '), g.altro && 'Altro: ' + g.altro].filter(Boolean).join('\n');
-  const S = { sel: null, selT: null, q: '', tab: 'free' };
+  const CATK = (list, k) => (typeof CAT !== 'undefined' && CAT[list] ? CAT[list].find(x => x.k === k) : null);
+  /* esigenze di un invitato come [icona, testo, classe] */
+  function flagsOf(g) {
+    const o = [];
+    arr(g.allergie).forEach(k => { const c = CATK('allergie', k); o.push([(c && c.icon) || '⚠', (c && c.label.replace(/ \(.*\)/, '')) || k, 'sa']); });
+    arr(g.intolleranze).forEach(k => { const c = CATK('intolleranze', k); o.push([(c && c.icon) || '⚠', (c && c.label) || k, 'si']); });
+    if (g.altro) o.push(['⚠', g.altro, 'sa']);
+    if (g.dieta) { const c = CATK('diete', g.dieta); o.push([(c && c.icon) || '🌱', g.dieta, 'sd']); }
+    return o;
+  }
+  const flagHtml = (f, max) => { const shown = f.slice(0, max || 99), more = f.length - shown.length; return shown.map(([i, l, c]) => `<span class="fl ${c}">${i} ${esc(l)}</span>`).join('') + (more > 0 ? `<span class="fl">+${more}</span>` : ''); };
+  const S = { sel: null, selT: null, q: '', tab: 'free', det: true };
   let drag = null;
   const H = () => (SeatPlan.host ? SeatPlan.host() : null);
   const msg = (h, m) => (h.toast ? h.toast(m) : alert(m));
 
   /* ---- geometria ---- */
+  const LW = 104, LH = 46;
   function geometry(t) {
-    const n = t.seats.length;
-    if (t.forma !== 'rett') {
-      const R = Math.max(58, Math.ceil(n * 44 / (2 * Math.PI))), size = 2 * (R + 26), c = size / 2, d = 2 * (R - 26);
-      return { w: size, h: size, table: { x: c - d / 2, y: c - d / 2, w: d, h: d, round: true }, pos: t.seats.map((_, i) => { const a = (-90 + i * 360 / n) * Math.PI / 180; return [c + R * Math.cos(a), c + R * Math.sin(a)]; }) };
+    const n = t.seats.length, det = S.det;
+    if (!det) {
+      if (t.forma !== 'rett') {
+        const R = Math.max(58, Math.ceil(n * 44 / (2 * Math.PI))), size = 2 * (R + 26), c = size / 2, d = 2 * (R - 26);
+        return { w: size, h: size, table: { x: c - d / 2, y: c - d / 2, w: d, h: d, round: true }, pos: t.seats.map((_, i) => { const a = (-90 + i * 360 / n) * Math.PI / 180; return [c + R * Math.cos(a), c + R * Math.sin(a)]; }), lab: [] };
+      }
+      const top = Math.ceil(n / 2), step = 42, w = Math.max(top, 3) * step + 30, h = 138;
+      return { w, h, table: { x: 14, y: 50, w: w - 28, h: 38, round: false }, pos: t.seats.map((_, i) => i < top ? [20 + step / 2 + i * step, 26] : [20 + step / 2 + (i - top) * step, h - 26]), lab: [] };
     }
-    const top = Math.ceil(n / 2), step = 42, w = Math.max(top, 3) * step + 30, h = 138;
-    return { w, h, table: { x: 14, y: 50, w: w - 28, h: 38, round: false }, pos: t.seats.map((_, i) => i < top ? [20 + step / 2 + i * step, 26] : [20 + step / 2 + (i - top) * step, h - 26]) };
+    if (t.forma !== 'rett') {                       // tondo con etichette (nome + esigenze) all'esterno di ogni posto
+      const R = Math.max(74, Math.ceil(n * 62 / (2 * Math.PI))), pos = [], lab = [];
+      t.seats.forEach((_, i) => {
+        const a = (-90 + i * 360 / n) * Math.PI / 180, ux = Math.cos(a), uy = Math.sin(a), sx = R * ux, sy = R * uy;
+        const d = 17 + 6 + Math.abs(ux) * LW / 2 + Math.abs(uy) * LH / 2 + (Math.abs(uy) > .55 && i % 2 ? 26 : 0);
+        pos.push([sx, sy]); lab.push([sx + ux * d, sy + uy * d]);
+      });
+      const xs = [...pos.map(p => p[0] - 17), ...pos.map(p => p[0] + 17), ...lab.map(p => p[0] - LW / 2), ...lab.map(p => p[0] + LW / 2)], ys = [...pos.map(p => p[1] - 17), ...pos.map(p => p[1] + 17), ...lab.map(p => p[1] - LH / 2), ...lab.map(p => p[1] + LH / 2)];
+      const x0 = Math.min(...xs) - 6, y0 = Math.min(...ys) - 6, w = Math.max(...xs) + 6 - x0, h = Math.max(...ys) + 6 - y0, rr = R - 26;
+      return { w, h, table: { x: -x0 - rr, y: -y0 - rr, w: 2 * rr, h: 2 * rr, round: true }, pos: pos.map(p => [p[0] - x0, p[1] - y0]), lab: lab.map(p => [p[0] - x0, p[1] - y0]) };
+    }
+    const top = Math.ceil(n / 2), step = LW + 4, w = Math.max(top, 3) * step + 20, sy1 = LH + 12 + 17, ty = sy1 + 17 + 8, sy2 = ty + 38 + 8 + 17, h = sy2 + 17 + 6 + LH + 6;
+    const pos = t.seats.map((_, i) => i < top ? [10 + step / 2 + i * step, sy1] : [10 + step / 2 + (i - top) * step, sy2]);
+    return { w, h, table: { x: 8, y: ty, w: w - 16, h: 38, round: false }, pos, lab: pos.map((p, i) => [p[0], i < top ? p[1] - 17 - 6 - LH / 2 : p[1] + 17 + 6 + LH / 2]) };
   }
   const HEAD = 30, size = t => { const g = geometry(t); return { w: g.w, h: g.h + HEAD }; };
   const hit = (a, b) => a.x < b.x + b.w + 14 && b.x < a.x + a.w + 14 && a.y < b.y + b.h + 14 && b.y < a.y + a.h + 14;
   function findSpot(tables, s, skip) {
     const others = tables.filter(t => t !== skip && Number.isFinite(t.x) && Number.isFinite(t.y)).map(t => ({ x: t.x, y: t.y, ...size(t) }));
-    for (let y = 16; y < 4000; y += 20) for (let x = 16; x <= 1180 - s.w; x += 20) if (!others.some(o => hit({ x, y, ...s }, o))) return { x, y };
+    for (let y = 16; y < 4000; y += 20) for (let x = 16; x <= 1500 - s.w; x += 20) if (!others.some(o => hit({ x, y, ...s }, o))) return { x, y };
     return { x: 16, y: 16 };
   }
   function ensurePos(h) { let ch = false; h.tables.forEach(t => { if (!Number.isFinite(t.x) || !Number.isFinite(t.y)) { Object.assign(t, findSpot(h.tables, size(t), t)); ch = true; } }); return ch; }
@@ -83,20 +111,24 @@ const SeatPlan = (() => {
   function seatHtml(h, t, i, p) {
     const gid = t.seats[i], g = gid && h.guests.find(x => x.id === gid), st = `left:${p[0]}px;top:${p[1]}px`;
     if (!g) return `<div class="sp-seat" style="${st}" data-t="${t.id}" data-i="${i}" title="Posto ${i + 1} libero">${i + 1}</div>`;
-    const cls = ['sp-seat', 'f', g.fascia === 'Bambino' ? 'b' : g.fascia === 'Neonato' ? 'n' : '', flag(g), S.sel === g.id ? 'sel' : ''].join(' ');
-    return `<div class="${cls}" style="${st}" data-t="${t.id}" data-i="${i}" data-g="${g.id}" title="${esc(tip(g))}">${esc(ini(g))}</div>`;
+    const cls = ['sp-seat', 'f', g.fascia === 'Bambino' ? 'b' : g.fascia === 'Neonato' ? 'n' : '', flag(g), S.sel === g.id ? 'sel' : ''].join(' '), fl = flagsOf(g);
+    return `<div class="${cls}" style="${st}" data-t="${t.id}" data-i="${i}" data-g="${g.id}" title="${esc(tip(g))}">${esc(ini(g))}${fl.length ? `<span class="bd">${fl[0][0]}</span>` : ''}</div>`;
+  }
+  function labHtml(h, gid, l, p) {
+    const g = gid && h.guests.find(x => x.id === gid); if (!g) return '';
+    return `<div class="sp-lab" style="left:${l[0]}px;top:${l[1]}px;width:${LW}px;min-height:${LH}px"><b>${esc(g.nome || '')}</b> ${esc(g.cognome || '')}<div class="fls">${flagHtml(flagsOf(g), 2)}</div></div>`;
   }
   function tableHtml(h, t) {
     const g = geometry(t), occ = occOf(t), [mn, mx] = lim(t), sel = S.selT === t.id, bad = t.forma !== 'rett' && occ > 0 && occ < mn;
     const ctl = sel && !h.ro ? `<div class="sp-tc"><button data-spa="minus" data-t="${t.id}" title="Togli un posto">−</button><b>${t.seats.length}</b><button data-spa="plus" data-t="${t.id}" title="Aggiungi un posto">＋</button><button data-spa="forma" data-t="${t.id}" title="Cambia forma">${t.forma === 'rett' ? '◯ Tondo' : '▭ Rett.'}</button><button data-spa="name" data-t="${t.id}" title="Rinomina">✎</button><button data-spa="del" data-t="${t.id}" title="Elimina tavolo">🗑</button></div>` : '';
     return `<div class="sp-tbl ${sel ? 'sel' : ''}" data-tbl="${t.id}" style="left:${t.x}px;top:${t.y}px;width:${g.w}px"><div class="sp-th" data-tdrag="${t.id}" title="Trascina per spostare il tavolo"><b>${esc(label(t))}</b><span class="pill ${occ === t.seats.length ? 'ok' : ''}">${occ}/${t.seats.length}</span>${bad ? `<span class="pill warn" title="Un tavolo tondo prevede da ${mn} a ${mx} persone">min ${mn}</span>` : ''}</div>${ctl}
-      <div class="sp-map" style="width:${g.w}px;height:${g.h}px"><div class="sp-tb" data-tdrag="${t.id}" style="left:${g.table.x}px;top:${g.table.y}px;width:${g.table.w}px;height:${g.table.h}px;border-radius:${g.table.round ? '50%' : '8px'}"><div>${t.num}<small>${t.forma === 'rett' ? 'rettangolare' : 'tondo'}</small></div></div>${t.seats.map((_, i) => seatHtml(h, t, i, g.pos[i])).join('')}</div></div>`;
+      <div class="sp-map" style="width:${g.w}px;height:${g.h}px"><div class="sp-tb" data-tdrag="${t.id}" style="left:${g.table.x}px;top:${g.table.y}px;width:${g.table.w}px;height:${g.table.h}px;border-radius:${g.table.round ? '50%' : '8px'}"><div>${t.num}<small>${t.forma === 'rett' ? 'rettangolare' : 'tondo'}</small></div></div>${t.seats.map((_, i) => seatHtml(h, t, i, g.pos[i])).join('')}${S.det ? t.seats.map((id, i) => labHtml(h, id, g.lab[i], g.pos[i])).join('') : ''}</div></div>`;
   }
   function roomSize(h) { let w = 1200, ht = 640; h.tables.forEach(t => { const s = size(t); w = Math.max(w, t.x + s.w + 40); ht = Math.max(ht, t.y + s.h + 40); }); return [w, ht]; }
   const roomHtml = h => h.tables.map(t => tableHtml(h, t)).join('') || '<div class="sp-empty">Nessun tavolo: aggiungine uno con i pulsanti in alto.</div>';
   function chipHtml(h, g) {
     const p = seatOf(h, g.id), f = flag(g);
-    return `<div class="sp-chip ${S.sel === g.id ? 'sel' : ''} ${p ? 'seated' : ''}" data-g="${g.id}" title="${esc(tip(g))}"><span class="gh">⠿</span><span class="nm">${esc(full(g))}</span>${g.fascia !== 'Adulto' ? `<span class="tg">${esc(g.fascia)}</span>` : ''}${f ? `<span class="fl ${f}">${f === 'sa' ? '⚠ allergia' : f === 'si' ? 'intoll.' : 'dieta'}</span>` : ''}${p ? `<span class="tg t">${esc(label(p.t))}</span>` : ''}</div>`;
+    return `<div class="sp-chip ${S.sel === g.id ? 'sel' : ''} ${p ? 'seated' : ''}" data-g="${g.id}" title="${esc(tip(g))}"><span class="gh">⠿</span><span class="nm">${esc(full(g))}</span>${g.fascia !== 'Adulto' ? `<span class="tg">${esc(g.fascia)}</span>` : ''}${f ? `<div class="fls" style="flex-basis:100%">${flagHtml(flagsOf(g))}</div>` : ''}${p ? `<span class="tg t">${esc(label(p.t))}</span>` : ''}</div>`;
   }
   function listHtml(h) {
     const q = nrm(S.q), list = h.guests.filter(g => (S.tab === 'all' || !seatOf(h, g.id)) && (!q || nrm(full(g)).includes(q)));
@@ -112,7 +144,7 @@ const SeatPlan = (() => {
     ensurePos(h); const [w, ht] = roomSize(h);
     return `<div class="spw" id="sp-root"><aside class="sp-list noprint"><input type="text" id="sp-q" placeholder="🔍 Cerca invitato…" value="${esc(S.q)}" autocomplete="off"><div class="sp-tabs" id="sp-tabs">${tabsHtml(h)}</div><div class="sp-items" id="sp-items">${listHtml(h)}</div>
       <p class="hint" style="margin:6px 2px 0">${h.ro ? 'Sola lettura.' : 'Trascina un invitato su un posto (o toccalo e poi tocca il posto). Trascina il tavolo dal suo titolo per spostarlo in sala. Trascina un invitato seduto su un altro posto per scambiarli, o qui per liberarlo.'}</p></aside>
-      <section class="sp-main"><div class="sp-bar noprint">${h.ro ? '' : `<button class="btn alt sm" data-spa="add" data-f="tondo">＋ Tavolo tondo <small>(8–11)</small></button><button class="btn alt sm" data-spa="add" data-f="rett">＋ Tavolo rettangolare</button><button class="btn sand sm" data-spa="auto">Assegna automaticamente</button>`}${h.print ? '<button class="btn alt sm" data-spa="print">🖨 Stampa</button>' : ''}<span class="sp-stats" id="sp-stats">${statsHtml(h)}</span></div>
+      <section class="sp-main"><div class="sp-bar noprint">${h.ro ? '' : `<button class="btn alt sm" data-spa="add" data-f="tondo">＋ Tavolo tondo <small>(8–11)</small></button><button class="btn alt sm" data-spa="add" data-f="rett">＋ Tavolo rettangolare</button><button class="btn sand sm" data-spa="auto">Assegna automaticamente</button><button class="btn alt sm" data-spa="reflow" title="Rimette in ordine i tavoli in sala">Riordina</button>`}<button class="btn alt sm" data-spa="det" title="Mostra o nasconde nomi ed esigenze accanto ai posti">${S.det ? '☑' : '☐'} Nomi ed esigenze</button>${h.print ? '<button class="btn alt sm" data-spa="print">🖨 Stampa</button>' : ''}<span class="sp-stats" id="sp-stats">${statsHtml(h)}</span></div>
       <div class="sp-canvas" id="sp-canvas"><div class="sp-room" id="sp-room" style="width:${w}px;height:${ht}px">${roomHtml(h)}</div></div></section></div>`;
   }
   function refresh() {
@@ -130,9 +162,11 @@ const SeatPlan = (() => {
     const t = h.tables.find(x => x.id === b.dataset.t), a = b.dataset.spa;
     if (a === 'tab') { S.tab = b.dataset.v; refresh(); return; }
     if (a === 'print') { window.print(); return; }
+    if (a === 'det') { S.det = !S.det; refresh(); return; }
     if (h.ro) return;
     if (a === 'add') { addTable(h, b.dataset.f); commit(h); }
     else if (a === 'auto') { autoSeat(h); commit(h); }
+    else if (a === 'reflow') { h.tables.forEach(t => { t.x = t.y = undefined; }); h.tables.slice().sort((x, y) => x.num - y.num).forEach(t => { Object.assign(t, findSpot(h.tables, size(t), t)); }); commit(h); }
     else if (a === 'plus' && t) { if (setSeats(h, t, t.seats.length + 1)) commit(h); else if (t.seats.length >= lim(t)[1]) msg(h, t.forma === 'rett' ? 'Massimo 24 posti' : 'Un tavolo tondo ospita al massimo 11 persone'); }
     else if (a === 'minus' && t) { if (t.seats.length <= lim(t)[0]) { msg(h, t.forma === 'rett' ? 'Almeno 1 posto' : 'Un tavolo tondo ha almeno 8 posti'); return; } if (setSeats(h, t, t.seats.length - 1)) commit(h); }
     else if (a === 'forma' && t) { if (setForma(h, t, t.forma === 'rett' ? 'tondo' : 'rett')) commit(h); }
