@@ -126,7 +126,7 @@ function viewQuestionario(E) {
     ${F(E, 'Bambini (3–10 anni)', 'q.bambini', { type: 'number', min: 0, r: 1 })}
     ${F(E, 'Neonati (0–2 anni)', 'q.neonati', { type: 'number', min: 0, r: 1 })}
     ${F(E, 'Staff / fornitori a tavola', 'q.staff', { type: 'number', min: 0, r: 1 })}
-    <div class="field"><label>Totale coperti</label><div class="counter" id="cop">${(+q.adulti || 0) + (+q.bambini || 0) + (+q.neonati || 0) + (+q.staff || 0)}</div><span class="hint">Tavoli tondi: da 8 a 11 persone, bambini e neonati compresi.</span></div></div></div>
+    <div class="field"><label>Totale coperti</label><div class="counter" id="cop">${(+q.adulti || 0) + (+q.bambini || 0) + (+q.neonati || 0) + (+q.staff || 0)}</div><span class="hint">Tavoli tondi: da 8 a 12 persone, bambini e neonati compresi.</span></div></div></div>
   <div class="card"><h3>5 · Altro da sapere</h3><div class="fields">
     ${F(E, 'Altri fornitori (foto, fiori, musica…)', 'q.fornitori', { area: 1, w2: 1 })}
     ${F(E, 'Accessibilità / ospiti con esigenze motorie', 'q.accessibilita', { area: 1, w2: 1 })}
@@ -282,7 +282,7 @@ function seatHtml(E, t, i, pos) {
 }
 function tableCard(E, t) {
   const geo = mapGeometry(t), occ = t.seats.filter(Boolean).length;
-  const tooMany = t.forma === 'tondo' && t.seats.length > 11, few = t.forma === 'tondo' && t.seats.length < 8;
+  const tooMany = t.forma === 'tondo' && t.seats.length > 12, few = t.forma === 'tondo' && t.seats.length < 8;
   const sp = t.seats.map(id => id && E.guests.find(g => g.id === id)).filter(Boolean).filter(hasSpecial).length;
   const nm = t.nome || `Tavolo ${t.num}`, ti = E.tables.indexOf(t);
   return `<div class="tcard ${tooMany ? 'bad' : ''}"><div class="thead"><h4>${esc(nm)}</h4><span class="pill ${occ === t.seats.length ? 'ok' : 'warn'}">${occ}/${t.seats.length}</span>
@@ -290,13 +290,13 @@ function tableCard(E, t) {
     <span class="right noprint"><button class="btn ghost sm" data-act="table-edit" data-t="${t.id}" title="Rinomina o elimina il tavolo">⚙</button></span></div>
     <div class="tctl noprint"><select data-b="tables.${ti}.forma" data-r title="Tipo di tavolo"><option value="tondo" ${t.forma === 'tondo' ? 'selected' : ''}>◯ Tondo</option><option value="rett" ${t.forma === 'rett' ? 'selected' : ''}>▭ Rettangolare</option></select>
       <span class="stepper"><button type="button" data-act="t-seats" data-t="${t.id}" data-d="-1" title="Togli un posto">−</button><b>${t.seats.length} posti</b><button type="button" data-act="t-seats" data-t="${t.id}" data-d="1" title="Aggiungi un posto">＋</button></span></div>
-    ${tooMany ? '<div class="alert bad small">Un tavolo tondo può ospitare al massimo 11 persone.</div>' : ''}${few ? '<div class="alert small">Sotto le 8 persone per un tavolo tondo (minimo previsto 8).</div>' : ''}
+    ${tooMany ? '<div class="alert bad small">Un tavolo tondo può ospitare al massimo 12 persone.</div>' : ''}${few ? '<div class="alert small">Sotto le 8 persone per un tavolo tondo (minimo previsto 8).</div>' : ''}
     <div class="map" style="width:${geo.w}px;height:${geo.h}px"><div class="tbl" style="left:${geo.table.x}px;top:${geo.table.y}px;width:${geo.table.w}px;height:${geo.table.h}px;border-radius:${geo.table.round ? '50%' : '8px'}"><div>${t.num}<small>${t.forma === 'tondo' ? 'tondo' : 'imperiale'}</small></div></div>
     ${t.seats.map((_, i) => seatHtml(E, t, i, geo.pos[i])).join('')}</div>
     ${UI.tlist ? `<ul class="slist">${t.seats.map((id, i) => { const g = id && E.guests.find(x => x.id === id); return g ? `<li data-act="seat" data-t="${t.id}" data-i="${i}"><span class="n">${i + 1}</span><span class="nm"><b>${esc(fullName(g))}</b></span>${iconsHtml(g)}</li>` : `<li class="empty" data-act="seat" data-t="${t.id}" data-i="${i}"><span class="n">${i + 1}</span><span class="nm">posto libero</span></li>`; }).join('')}</ul>` : ''}</div>`;
 }
 function viewTavoli(E) {
-  return `<div class="secthead"><div><h2>Tavoli e mappa della sala</h2><p>A sinistra l'elenco invitati (con ricerca), a destra la sala. Trascina un invitato su un posto, trascina un tavolo dal suo titolo per spostarlo, trascina gli invitati seduti per cambiare la disposizione. Tavolo tondo da 8 a 11 persone, rettangolare senza limiti. Clicca un tavolo per cambiarne forma, posti e nome.</p></div></div>
+  return `<div class="secthead"><div><h2>Tavoli e mappa della sala</h2><p>A sinistra l'elenco invitati (con ricerca), a destra la sala. Trascina un invitato su un posto, trascina un tavolo dal suo titolo per spostarlo, trascina gli invitati seduti per cambiare la disposizione. Tavolo tondo da 8 a 12 persone, rettangolare senza limiti. Clicca un tavolo per cambiarne forma, posti e nome.</p></div></div>
   <div class="toolbar noprint"><span class="right">${legendHtml()}</span></div>${SeatPlan.html(SeatPlan.host())}`;
 }
 SeatPlan.host = () => {
@@ -311,7 +311,7 @@ ACTIONS['table-edit'] = el => {
     <div class="field"><label>Numero</label><input type="number" name="num" value="${t.num}"></div><div class="field"><label>Nome (facoltativo)</label><input type="text" name="nome" value="${esc(t.nome)}"></div>
     <div class="field"><label>Forma</label><select name="forma"><option value="tondo" ${t.forma === 'tondo' ? 'selected' : ''}>Tondo</option><option value="rett" ${t.forma === 'rett' ? 'selected' : ''}>Rettangolare (imperiale)</option></select></div>
     <div class="field"><label>Numero di posti</label><input type="number" name="posti" min="1" max="24" value="${t.seats.length}"></div></div>
-    <p class="hint">Tondo: da 8 a 11 persone. Rettangolare: i posti sono divisi sui due lati lunghi (prima il lato superiore, da sinistra a destra).</p>
+    <p class="hint">Tondo: da 8 a 12 persone. Rettangolare: i posti sono divisi sui due lati lunghi (prima il lato superiore, da sinistra a destra).</p>
     <div class="acts"><button type="button" class="btn danger" data-act="table-del" data-t="${t.id}">Elimina tavolo</button><button type="button" class="btn alt" data-act="table-clear" data-t="${t.id}">Svuota posti</button><span class="grow"></span><button type="button" class="btn alt" data-act="modal-close">Annulla</button><button class="btn">Salva</button></div></form>`);
 };
 document.addEventListener('submit', e => {
@@ -403,7 +403,7 @@ ACTIONS['t-seats'] = el => {
   }
   t.posti = t.seats.length; save(); rr();
 };
-const MAX_SEATS = t => (t.forma === 'tondo' ? 11 : 24);
+const MAX_SEATS = t => (t.forma === 'tondo' ? 12 : 24);
 const canGrow = t => t.seats.length < MAX_SEATS(t);
 /* primo posto libero; se il tavolo è pieno ma sotto il massimo aggiunge un posto */
 function freeSeat(t) { let i = t.seats.indexOf(null); if (i < 0 && canGrow(t)) { t.seats.push(null); t.posti = t.seats.length; i = t.seats.length - 1; } return i; }

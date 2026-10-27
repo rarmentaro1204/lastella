@@ -201,7 +201,7 @@ function parseWorkbook(wb) {
         if (!cand) { out.warnings.push(`Tavolo ${t.num}, posto ${k}: «${name}» non trovato nell'elenco invitati (o già assegnato altrove).`); return; }
         used.add(cand.id); t.seats[k - 1] = cand.id;
       });
-      if (t.forma === 'tondo' && t.posti > 11) out.warnings.push(`Tavolo ${t.num}: tondo con ${t.posti} posti (il massimo previsto è 11).`);
+      if (t.forma === 'tondo' && t.posti > 12) out.warnings.push(`Tavolo ${t.num}: tondo con ${t.posti} posti (il massimo previsto è 12).`);
       out.tables.push(t);
     });
   } else out.warnings.push('Foglio «Tavoli» non trovato: importati solo gli invitati.');

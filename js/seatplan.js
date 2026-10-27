@@ -2,10 +2,10 @@
    Piano dei tavoli: elenco invitati + sala con tavoli trascinabili.
    Condiviso fra gestionale e portale cliente. Chi lo usa fornisce SeatPlan.host():
    { guests, tables, change(), ro, toast(msg), newId(), print }  oppure null se la vista non è aperta.
-   Regole: tavolo tondo da 8 a 11 posti (massimo vincolante); rettangolare nessun limite (1–24).
+   Regole: tavolo tondo da 8 a 12 posti (massimo vincolante); rettangolare nessun limite (1–24).
    ===================================================================== */
 const SeatPlan = (() => {
-  const LIM = { tondo: [8, 11], rett: [1, 24] };
+  const LIM = { tondo: [8, 12], rett: [1, 24] };
   const lim = t => LIM[t.forma === 'rett' ? 'rett' : 'tondo'];
   const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const nrm = s => String(s ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
@@ -104,9 +104,9 @@ const SeatPlan = (() => {
   function setForma(h, t, f) {
     if (t.forma === f) return false;
     if (f === 'tondo') {
-      const occ = occOf(t); if (occ > 11) { msg(h, `Il tavolo ha ${occ} persone: un tavolo tondo ne contiene al massimo 11. Spostane alcune e riprova.`); return false; }
-      t.forma = 'tondo'; const seated = t.seats.filter(Boolean); const n = Math.max(8, Math.min(11, Math.max(t.seats.length, occ)));
-      t.seats = [...seated, ...Array(Math.max(0, n - seated.length)).fill(null)].slice(0, 11);
+      const occ = occOf(t); if (occ > 12) { msg(h, `Il tavolo ha ${occ} persone: un tavolo tondo ne contiene al massimo 12. Spostane alcune e riprova.`); return false; }
+      t.forma = 'tondo'; const seated = t.seats.filter(Boolean); const n = Math.max(8, Math.min(12, Math.max(t.seats.length, occ)));
+      t.seats = [...seated, ...Array(Math.max(0, n - seated.length)).fill(null)].slice(0, 12);
     } else t.forma = 'rett';
     t.posti = t.seats.length; return true;
   }
@@ -153,7 +153,7 @@ const SeatPlan = (() => {
     ensurePos(h, true); const [w, ht] = roomSize(h);
     return `<div class="spw" id="sp-root"><aside class="sp-list noprint"><input type="text" id="sp-q" placeholder="🔍 Cerca invitato…" value="${esc(S.q)}" autocomplete="off"><div class="sp-tabs" id="sp-tabs">${tabsHtml(h)}</div><div class="sp-items" id="sp-items">${listHtml(h)}</div>
       <p class="hint" style="margin:6px 2px 0">${h.ro ? 'Sola lettura.' : 'Trascina un invitato su un posto (o toccalo e poi tocca il posto). Trascina il tavolo dal suo titolo per spostarlo in sala. Trascina un invitato seduto su un altro posto per scambiarli, o qui per liberarlo.'}</p></aside>
-      <section class="sp-main"><div class="sp-bar noprint">${h.ro ? '' : `<button class="btn alt sm" data-spa="add" data-f="tondo">＋ Tavolo tondo <small>(8–11)</small></button><button class="btn alt sm" data-spa="add" data-f="rett">＋ Tavolo rettangolare</button><button class="btn sand sm" data-spa="auto">Assegna automaticamente</button><button class="btn alt sm" data-spa="reflow" title="Rimette in ordine i tavoli in sala">Riordina</button>`}<button class="btn alt sm" data-spa="det" title="Mostra o nasconde nomi ed esigenze accanto ai posti">${S.det ? '☑' : '☐'} Nomi ed esigenze</button>${h.print ? '<button class="btn alt sm" data-spa="print">🖨 Stampa</button>' : ''}<span class="sp-zoom" title="Zoom (anche Ctrl + rotellina)"><button data-spa="zout">−</button><b id="sp-zl">${Math.round(S.zoom * 100)}%</b><button data-spa="zin">＋</button><button data-spa="zfit">Adatta</button></span><span class="sp-stats" id="sp-stats">${statsHtml(h)}</span></div>
+      <section class="sp-main"><div class="sp-bar noprint">${h.ro ? '' : `<button class="btn alt sm" data-spa="add" data-f="tondo">＋ Tavolo tondo <small>(8–12)</small></button><button class="btn alt sm" data-spa="add" data-f="rett">＋ Tavolo rettangolare</button><button class="btn sand sm" data-spa="auto">Assegna automaticamente</button><button class="btn alt sm" data-spa="reflow" title="Rimette in ordine i tavoli in sala">Riordina</button>`}<button class="btn alt sm" data-spa="det" title="Mostra o nasconde nomi ed esigenze accanto ai posti">${S.det ? '☑' : '☐'} Nomi ed esigenze</button>${h.print ? '<button class="btn alt sm" data-spa="print">🖨 Stampa</button>' : ''}<span class="sp-zoom" title="Zoom (anche Ctrl + rotellina)"><button data-spa="zout">−</button><b id="sp-zl">${Math.round(S.zoom * 100)}%</b><button data-spa="zin">＋</button><button data-spa="zfit">Adatta</button></span><span class="sp-stats" id="sp-stats">${statsHtml(h)}</span></div>
       <div class="sp-canvas" id="sp-canvas"><div class="sp-zw" id="sp-zw" style="width:${w * S.zoom}px;height:${ht * S.zoom}px"><div class="sp-room" id="sp-room" style="width:${w}px;height:${ht}px;transform:scale(${S.zoom})">${roomHtml(h)}</div></div></div></section></div>`;
   }
   function refresh() {
@@ -181,7 +181,7 @@ const SeatPlan = (() => {
     if (a === 'add') { addTable(h, b.dataset.f); commit(h); }
     else if (a === 'auto') { autoSeat(h); commit(h); }
     else if (a === 'reflow') { h.tables.forEach(t => { t.x = t.y = undefined; }); h.tables.slice().sort((x, y) => x.num - y.num).forEach(t => { Object.assign(t, findSpot(h.tables, size(t), t)); }); commit(h); }
-    else if (a === 'plus' && t) { if (setSeats(h, t, t.seats.length + 1)) commit(h); else if (t.seats.length >= lim(t)[1]) msg(h, t.forma === 'rett' ? 'Massimo 24 posti' : 'Un tavolo tondo ospita al massimo 11 persone'); }
+    else if (a === 'plus' && t) { if (setSeats(h, t, t.seats.length + 1)) commit(h); else if (t.seats.length >= lim(t)[1]) msg(h, t.forma === 'rett' ? 'Massimo 24 posti' : 'Un tavolo tondo ospita al massimo 12 persone'); }
     else if (a === 'minus' && t) { if (t.seats.length <= lim(t)[0]) { msg(h, t.forma === 'rett' ? 'Almeno 1 posto' : 'Un tavolo tondo ha almeno 8 posti'); return; } if (setSeats(h, t, t.seats.length - 1)) commit(h); }
     else if (a === 'forma' && t) { if (setForma(h, t, t.forma === 'rett' ? 'tondo' : 'rett')) commit(h); }
     else if (a === 'name' && t) { const v = prompt('Nome del tavolo (vuoto = «Tavolo ' + t.num + '»):', t.nome || ''); if (v !== null) { t.nome = v.trim().slice(0, 40); commit(h); } }
