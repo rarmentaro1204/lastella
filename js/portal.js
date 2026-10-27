@@ -1,23 +1,20 @@
 /* Portale cliente: pagina privata raggiunta dal link personale (#token). Nessun accesso ad altri dati del gestionale. */
 const $ = s => document.querySelector(s);
-const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const TOKEN = (location.hash.replace(/^#\/?/, '') || new URLSearchParams(location.search).get('t') || '').trim();
 const API = '/api/portal/' + encodeURIComponent(TOKEN);
 const ALLERGIE = [['glutine', 'Glutine'], ['crostacei', 'Crostacei'], ['uova', 'Uova'], ['pesce', 'Pesce'], ['arachidi', 'Arachidi'], ['soia', 'Soia'], ['latte', 'Latte'], ['guscio', 'Frutta a guscio'], ['sedano', 'Sedano'], ['senape', 'Senape'], ['sesamo', 'Sesamo'], ['solfiti', 'Solfiti'], ['lupini', 'Lupini'], ['molluschi', 'Molluschi']];
 const INTOLL = [['celiachia', 'Celiachia'], ['lattosio', 'Lattosio'], ['nichel', 'Nichel'], ['istamina', 'Istamina'], ['fruttosio', 'Fruttosio'], ['favismo', 'Favismo'], ['gravidanza', 'Gravidanza'], ['funghi', 'Funghi']];
 const DIETE = ['', 'Vegetariano', 'Vegano', 'Fruttariano', 'Pescetariano', 'Crudista', 'Halal', 'Kosher'];
-const TABS = [['home', 'Il tuo evento'], ['aperitivo', 'Aperitivo'], ['tavola', 'A tavola'], ['dolci', 'Dolci e vini'], ['allest', 'Allestimenti'], ['invitati', 'Invitati'], ['richieste', 'Richieste speciali'], ['fine', 'Note e conferma']];
+const TABS = [['home', 'Il tuo evento'], ['aperitivo', 'Aperitivo'], ['tavola', 'A tavola'], ['dolci', 'Dolci e vini'], ['allest', 'Allestimenti'], ['invitati', 'Invitati'], ['richieste', 'Richieste speciali'], ['fine', 'Note e conferma'], ['eco', 'Riepilogo economico']];
 let EV = null, D = null, tab = 'home', dirty = false, msg = '', saving = false;
 
-const clone = o => JSON.parse(JSON.stringify(o));
 const fmt = iso => iso ? new Date(iso + 'T12:00:00').toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }) : '—';
-const uid = () => Math.random().toString(36).slice(2, 10);
 
 async function call(method, body) {
   const r = await fetch(API, { method, headers: { 'content-type': 'application/json' }, body: body ? JSON.stringify(body) : undefined });
   return { ok: r.ok, status: r.status, body: await r.json().catch(() => ({})) };
 }
-function load(ev) {
+function loadEv(ev) {
   EV = ev; D = { menu: clone(ev.menu), allest: clone(ev.allest), guests: clone(ev.guests), special: clone(ev.special), nota: ev.nota || '' }; dirty = false;
   const m = D.menu; for (const k of ['show', 'passaggio', 'extraBuvette', 'pre', 'entree', 'primi', 'secondi', 'extraVini', 'lounge']) m[k] = m[k] || [];
 }
@@ -25,7 +22,7 @@ async function boot() {
   if (!TOKEN) { $('#app').innerHTML = '<div class="card"><h2>Link non valido</h2><p class="muted">Apri il link personale che ti ha inviato La Stella.</p></div>'; return; }
   const r = await call('GET');
   if (!r.ok) { $('#app').innerHTML = `<div class="card"><h2>Link non valido o scaduto</h2><p class="muted">${esc(r.body.error || 'Contatta La Stella per ricevere un nuovo link.')}</p></div>`; return; }
-  load(r.body.event); draw();
+  loadEv(r.body.event); draw();
 }
 
 const locked = k => EV.locks.all || EV.locks[k];
@@ -34,7 +31,7 @@ const get = path => path.split('.').reduce((o, k) => (o == null ? o : o[k]), D);
 function set(path, v) { const ks = path.split('.'), last = ks.pop(); const o = ks.reduce((o, k) => (o[k] = o[k] || {}), D); o[last] = v; dirty = true; }
 const radio = (path, v, label, d, lk) => `<label class="opt ${get(path) === v ? 'on' : ''} ${locked(lk) ? 'dis' : ''}"><input type="radio" name="${esc(path)}" data-set="${esc(path)}" data-v="${esc(v)}" ${get(path) === v ? 'checked' : ''} ${dis(lk)}><div><b>${esc(label)}</b>${d ? `<div class="d">${esc(d)}</div>` : ''}</div></label>`;
 const check = (path, v, label, d, lk) => `<label class="opt ${(get(path) || []).includes(v) ? 'on' : ''} ${locked(lk) ? 'dis' : ''}"><input type="checkbox" data-tog="${esc(path)}" data-v="${esc(v)}" ${(get(path) || []).includes(v) ? 'checked' : ''} ${dis(lk)}><div><b>${esc(label)}</b>${d ? `<div class="d">${esc(d)}</div>` : ''}</div></label>`;
-const lockNote = k => (locked(k) ? `<div class="alert">${EV.locks.all ? 'Questa pratica è chiusa.' : 'Il termine per questa sezione è scaduto'}: per modifiche scrivi a La Stella.</div>` : '');
+const lockNote = k => (locked(k) ? `<div class="alert">${EV.confermatoAt ? 'Avete confermato le vostre scelte: non sono più modificabili da qui' : EV.locks.all ? 'Questa pratica è chiusa' : 'Il termine per questa sezione è scaduto'}: per modifiche contattate La Stella.</div>` : '');
 const dishes = (path, arr, lk) => arr.map(r => check(path, r.id, r.name, r.desc, lk)).join('');
 
 function view() {
@@ -69,9 +66,27 @@ function view() {
     ${D.special.map((s, i) => `<div class="card"><div class="row"><select data-sp="${i}" data-f="kind" style="max-width:260px" ${dis('all')}>${[['piatto', 'Piatto personalizzato'], ['isola', 'Isola personalizzata'], ['dieta', 'Variante dietetica / allergeni'], ['altro', 'Altro']].map(([k, l]) => `<option value="${k}" ${s.kind === k ? 'selected' : ''}>${l}</option>`).join('')}</select>${s.stato ? `<span class="pill ${s.stato === 'Approvato' ? 'ok' : 'warn'}">${esc(s.stato)}</span>` : ''}<button class="btn alt sm" data-spdel="${i}" ${dis('all')}>Elimina</button></div>
       <div style="margin-top:8px"><input type="text" data-sp="${i}" data-f="titolo" placeholder="Titolo (es. Torta senza glutine)" value="${esc(s.titolo)}" ${dis('all')}></div><div style="margin-top:8px"><textarea data-sp="${i}" data-f="descr" placeholder="Descrizione" ${dis('all')}>${esc(s.descr)}</textarea></div></div>`).join('') || '<div class="muted">Nessuna richiesta.</div>'}
     <button class="btn alt" data-spadd ${dis('all')}>＋ Aggiungi richiesta</button>`;
+  if (tab === 'eco') return ecoView();
   return `<h2>Note e conferma</h2>${EV.confermatoAt ? '' : lockNote('all')}<div class="card"><label class="f">Messaggio per lo staff</label><textarea data-set="nota" ${dis('all')}>${esc(D.nota)}</textarea></div>
     <div class="card"><h4>Conferma finale</h4>${EV.confermatoAt ? `<div class="alert ok">Scelte confermate il ${esc(new Date(EV.confermatoAt).toLocaleDateString('it-IT'))}. Non è più possibile modificarle da qui: per qualsiasi cambiamento contattate La Stella.</div>`
       : `<div class="alert"><b>Attenzione:</b> dopo la conferma <b>non sarà più possibile modificare</b> le scelte (menù, allestimenti, invitati, richieste). Per eventuali cambiamenti dovrete contattare direttamente La Stella, che valuterà la fattibilità.</div><p class="muted">Quando avete deciso tutto premete «Conferma definitivamente»: lo staff riceve l'avviso e procede con l'organizzazione.</p><button class="btn" data-confirm ${dis('all')}>Conferma definitivamente</button>`}</div>`;
+}
+function ecoView() {
+  const pr = EV.pricing; if (!pr) return '<div class="card">Riepilogo non disponibile.</div>';
+  let Q, plan;
+  try {
+    S.settings = hydrateSettings(pr.settings);
+    const E = hydrate({ q: pr.event.q, allest: D.allest, addons: pr.event.addons, special: pr.event.special, econ: pr.event.econ, pagAuto: pr.event.pagAuto });
+    Q = computeQuote(E);
+    plan = pr.event.pagAuto ? buildScadenziario(E, Q.imponibile).map((p, i) => ({ ...p, paid: !!(pr.event.pagamenti[i] && pr.event.pagamenti[i].paid) })) : pr.event.pagamenti;
+  } catch (err) { return '<div class="card">Non è stato possibile calcolare il riepilogo: contattate La Stella.</div>'; }
+  const iva = S.settings.iva, secs = [...new Set(Q.lines.map(l => l.sec))];
+  return `<h2>Riepilogo economico</h2>${dirty ? '<div class="alert">Avete modifiche non salvate: salvatele per aggiornare il riepilogo.</div>' : ''}
+  <p class="muted">Preventivo aggiornato in base alle vostre scelte. È indicativo: le voci «da valutare» o a quotazione dedicata saranno confermate da La Stella.</p>
+  ${secs.map(sec => `<h3>${esc(sec)}</h3><div class="card"><table>${Q.lines.filter(l => l.sec === sec).map(l => `<tr><td>${esc(l.label)}${l.qty > 1 ? `<div class="muted small">${l.qty} × ${eur(l.unit)}</div>` : ''}</td><td style="text-align:right;white-space:nowrap"><b>${eur(l.tot)}</b></td></tr>`).join('')}</table></div>`).join('')}
+  <div class="card"><table><tr><td>Imponibile</td><td style="text-align:right">${eur(Q.imponibile)}</td></tr><tr><td>IVA ${iva}%</td><td style="text-align:right">${eur(Q.iva)}</td></tr><tr><td><b>Totale (IVA inclusa)</b></td><td style="text-align:right;font-size:20px"><b>${eur(Q.totale)}</b></td></tr></table></div>
+  ${Q.infos.length ? Q.infos.map(i => `<div class="alert ok">${esc(i)}</div>`).join('') : ''}
+  ${plan && plan.length ? `<h3>Scadenze di pagamento</h3><div class="card"><table><tr><th>Quando</th><th>Descrizione</th><th style="text-align:right">Importo IVA incl.</th></tr>${plan.map(p => `<tr><td style="white-space:nowrap">${p.due ? esc(new Date(p.due + 'T12:00:00').toLocaleDateString('it-IT')) : '—'}</td><td>${esc(p.desc)}${p.paid ? ' <span class="pill ok">pagato</span>' : ''}</td><td style="text-align:right;white-space:nowrap">${eur(p.importo * (1 + iva / 100))}</td></tr>`).join('')}</table></div>` : ''}`;
 }
 function allestVoce(v) {
   const st = D.allest[v.id] || {}, sel = v.opts.find(o => o.id === st.opt), sur = o => (o.sur ? ` · +€${o.sur}/pers` : o.fix ? ` · €${o.fix}` : o.quota ? ' · su quotazione' : '');
@@ -103,12 +118,12 @@ function draw() {
   b.innerHTML = `${msg ? `<span class="${msg.startsWith('✓') ? '' : 'muted'}">${esc(msg)}</span>` : dirty ? '<span class="muted">Modifiche non salvate</span>' : ''}<button class="btn" data-save ${dirty && !saving ? '' : 'disabled'}>${saving ? 'Salvataggio…' : 'Salva le modifiche'}</button>`;
   scrollTo(0, y);
 }
-async function save(extra = {}) {
+async function savePortal(extra = {}) {
   saving = true; msg = ''; draw();
   const body = { menu: D.menu, allest: D.allest, guests: D.guests, special: D.special, nota: D.nota, ...extra };
   const r = await call('PUT', body); saving = false;
   if (!r.ok) { msg = r.body.error || 'Errore, riprova'; draw(); return; }
-  const keep = tab; load(r.body.event); tab = keep;
+  const keep = tab; loadEv(r.body.event); tab = keep;
   msg = r.body.denied && r.body.denied.length ? 'Alcune parti sono chiuse e non sono state salvate: ' + r.body.denied.join(', ') : '✓ Salvato';
   draw();
 }
@@ -116,8 +131,8 @@ async function save(extra = {}) {
 document.addEventListener('click', e => {
   const t = e.target.closest('[data-tab],[data-save],[data-gadd],[data-gdel],[data-gt],[data-spadd],[data-spdel],[data-confirm]'); if (!t) return;
   if (t.dataset.tab) { tab = t.dataset.tab; msg = ''; draw(); scrollTo(0, 0); }
-  else if ('save' in t.dataset) save();
-  else if ('confirm' in t.dataset) { if (confirm('Dopo la conferma NON potrete più modificare le scelte. Confermare definitivamente?')) save({ conferma: true }); }
+  else if ('save' in t.dataset) savePortal();
+  else if ('confirm' in t.dataset) { if (confirm('Dopo la conferma NON potrete più modificare le scelte. Confermare definitivamente?')) savePortal({ conferma: true }); }
   else if ('gadd' in t.dataset) { D.guests.push({ id: uid(), nome: '', cognome: '', fascia: 'Adulto', dieta: '', allergie: [], intolleranze: [], altro: '', note: '', seggiolone: false }); dirty = true; msg = ''; draw(); }
   else if (t.dataset.gdel !== undefined) { if (confirm('Eliminare questo invitato?')) { D.guests.splice(+t.dataset.gdel, 1); dirty = true; draw(); } }
   else if (t.dataset.gt !== undefined) { if (locked('guests')) return; const a = D.guests[+t.dataset.gt][t.dataset.f], v = t.dataset.v, i = a.indexOf(v); i < 0 ? a.push(v) : a.splice(i, 1); dirty = true; msg = ''; draw(); }
@@ -146,7 +161,6 @@ document.addEventListener('change', e => {
 });
 
 /* ---- import da Excel (stesso modello usato dallo staff) ---- */
-const norm = s => String(s ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 function parseGuests(wb) {
   const sh = wb.Sheets[wb.SheetNames.find(n => /invitat/.test(norm(n))) || wb.SheetNames[0]]; if (!sh) return [];
   const rows = XLSX.utils.sheet_to_json(sh, { header: 1, defval: '', raw: false }), head = (rows[0] || []).map(norm), col = {}, aC = [], iC = [];

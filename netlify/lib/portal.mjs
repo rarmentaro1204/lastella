@@ -33,6 +33,16 @@ export function portalCatalog(settings, year) {
     allestimenti: (C.allestimenti || []).map(g => ({ gruppo: g.gruppo, voci: (g.voci || []).map(v => ({ id: v.id, nome: v.nome, fisso: !!v.fisso, info: v.info || '', color: !!v.color, opts: (v.opts || []).map(o => ({ id: o.id, nome: o.nome, sur: o.sur || 0, fix: o.fix || 0, quota: !!o.quota, hex: o.hex || '', nota: o.nota || '', testo: !!o.testo })) })) })),
   };
 }
+/* dati per il riepilogo economico: il preventivo lo ricalcola la pagina con lo stesso motore del gestionale */
+function portalPricing(E, settings, year) {
+  const st = settings || {}, q = E.q || {}, pick = (o, ks) => Object.fromEntries(ks.filter(k => o && k in o).map(k => [k, o[k]]));
+  const cat = portalCatalog(settings, year);
+  return {
+    settings: { ...pick(st, ['iva', 'bambinoPrezzo', 'neonatoPrezzo', 'staffPrezzo', 'supplementiSu', 'listini', 'addons', 'prezzi', 'scadenziario']), catalogs: cat ? { [year]: { allestimenti: cat.allestimenti } } : {} },
+    event: { q: pick(q, ['adulti', 'bambini', 'neonati', 'staff', 'giorno', 'data', 'listino', 'firma']), addons: E.addons || {}, econ: { rettifiche: ((E.econ || {}).rettifiche || []).map(r => ({ desc: r.desc, importo: r.importo })) },
+      special: (E.special || []).map(s => pick(s, ['tipo', 'titolo', 'stato', 'porzioni', 'prezzoUnit', 'forfait'])), pagAuto: E.pagAuto !== false, pagamenti: (E.pagamenti || []).map(p => pick(p, ['desc', 'due', 'importo', 'paid'])) },
+  };
+}
 export function portalView(E, settings) {
   const q = E.q || {}, pick = (o, ks) => Object.fromEntries(ks.filter(k => k in o).map(k => [k, o[k]]));
   return {
@@ -40,6 +50,7 @@ export function portalView(E, settings) {
     q: pick(q, ['sposo1', 'sposo2', 'data', 'locationNome', 'tipo', 'pasto', 'rito', 'adulti', 'bambini', 'neonati', 'staff', 'scadenzaMenu', 'scadenzaAllest']),
     menu: E.menu || {}, allest: E.allest || {}, guests: E.guests || [], tables: E.tables || [],
     special: (E.special || []).filter(s => s.da === 'cliente').map(s => ({ id: s.id, kind: s.kind, titolo: s.titolo, descr: s.descr, sezione: s.sezione, stato: s.stato })),
+    pricing: portalPricing(E, settings, E.q && E.q.data ? +E.q.data.slice(0, 4) : new Date().getFullYear()),
     catalog: portalCatalog(settings, E.q && E.q.data ? +E.q.data.slice(0, 4) : new Date().getFullYear()),
     nota: (E.portale && E.portale.nota) || '', confermatoAt: (E.portale && E.portale.confermatoAt) || '', locks: portalLocks(E),
   };
