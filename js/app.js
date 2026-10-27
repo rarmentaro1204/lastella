@@ -16,6 +16,7 @@ const SECS = [
   { k: 'addon', n: '04', t: 'Add-on' },
   { k: 'economics', n: '05', t: 'Economics' },
   { k: 'ricettario', n: '06', t: 'Ricettario' },
+  { k: 'servizio', n: '07', t: 'Servizio' },
 ];
 
 const curEvent = () => (ROUTE.view === 'event' ? getEvent(ROUTE.id) : null);
@@ -81,7 +82,7 @@ function sideHtml(E) {
   const on = v => (ROUTE.view === v ? 'on' : '');
   let nav = `<a href="#/home" class="${on('home')}"><em>◆</em>Dashboard</a><a href="#/events" class="${on('events')}"><em>☰</em>Eventi</a>`;
   if (AUTH.cucina) nav = `<a href="#/events" class="${on('events')}"><em>☰</em>Eventi</a>`;
-  if (E && AUTH.cucina) nav += `<div class="sep"></div><div class="lbl">${esc(evName(E))}</div><a href="#/${evUrl('evento', 'invitati')}" class="${ROUTE.sec === 'evento' ? 'on' : ''}"><em>👥</em>Invitati e allergie</a><a href="#/${evUrl('ricettario')}" class="${ROUTE.sec === 'ricettario' ? 'on' : ''}"><em>06</em>Ricettario evento</a>`;
+  if (E && AUTH.cucina) nav += `<div class="sep"></div><div class="lbl">${esc(evName(E))}</div><a href="#/${evUrl('evento', 'invitati')}" class="${ROUTE.sec === 'evento' ? 'on' : ''}"><em>👥</em>Invitati e allergie</a><a href="#/${evUrl('ricettario')}" class="${ROUTE.sec === 'ricettario' ? 'on' : ''}"><em>06</em>Ricettario evento</a><a href="#/${evUrl('servizio')}" class="${ROUTE.sec === 'servizio' ? 'on' : ''}"><em>07</em>Servizio</a>`;
   else if (E) {
     const lock = missingRequired(E).length;
     nav += `<div class="sep"></div><div class="lbl">${esc(evName(E))}</div>`;
@@ -114,7 +115,7 @@ function eventShell(E) {
     ${cust.length ? `<a class="pill warn" id="hd-cust" href="#/${evUrl('economics')}" title="Vedi le customizzazioni">⚠ ${cust.length} customizzazioni</a>` : ''}</div></div>
     ${AUTH.cucina ? '' : `<div class="tot"><small>Totale stimato (iva incl.)</small><strong id="hd-total">${eur(q.totale)}</strong></div>`}</div>`;
   const body = (VIEWS[sec.k] || (() => ''))(E);
-  const ro = AUTH.cucina && ROUTE.sec !== 'ricettario';
+  const ro = AUTH.cucina && !['ricettario', 'servizio'].includes(ROUTE.sec);
   return header + tabs + `${ro ? '<div class="alert info">Sola lettura · profilo cucina</div>' : ''}<section ${ro ? 'inert' : ''}>${body}</section>`;
 }
 function refreshHeader() {
