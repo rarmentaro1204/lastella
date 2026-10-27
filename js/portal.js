@@ -69,8 +69,9 @@ function view() {
     ${D.special.map((s, i) => `<div class="card"><div class="row"><select data-sp="${i}" data-f="kind" style="max-width:260px" ${dis('all')}>${[['piatto', 'Piatto personalizzato'], ['isola', 'Isola personalizzata'], ['dieta', 'Variante dietetica / allergeni'], ['altro', 'Altro']].map(([k, l]) => `<option value="${k}" ${s.kind === k ? 'selected' : ''}>${l}</option>`).join('')}</select>${s.stato ? `<span class="pill ${s.stato === 'Approvato' ? 'ok' : 'warn'}">${esc(s.stato)}</span>` : ''}<button class="btn alt sm" data-spdel="${i}" ${dis('all')}>Elimina</button></div>
       <div style="margin-top:8px"><input type="text" data-sp="${i}" data-f="titolo" placeholder="Titolo (es. Torta senza glutine)" value="${esc(s.titolo)}" ${dis('all')}></div><div style="margin-top:8px"><textarea data-sp="${i}" data-f="descr" placeholder="Descrizione" ${dis('all')}>${esc(s.descr)}</textarea></div></div>`).join('') || '<div class="muted">Nessuna richiesta.</div>'}
     <button class="btn alt" data-spadd ${dis('all')}>＋ Aggiungi richiesta</button>`;
-  return `<h2>Note e conferma</h2>${lockNote('all')}<div class="card"><label class="f">Messaggio per lo staff</label><textarea data-set="nota" ${dis('all')}>${esc(D.nota)}</textarea></div>
-    <div class="card"><h4>Conferma finale</h4><p class="muted">Quando avete deciso tutto premete «Conferma le mie scelte»: lo staff riceve l'avviso e procede con l'organizzazione. Potete comunque contattarci per modifiche successive.</p><button class="btn" data-confirm ${dis('all')}>Conferma le mie scelte</button></div>`;
+  return `<h2>Note e conferma</h2>${EV.confermatoAt ? '' : lockNote('all')}<div class="card"><label class="f">Messaggio per lo staff</label><textarea data-set="nota" ${dis('all')}>${esc(D.nota)}</textarea></div>
+    <div class="card"><h4>Conferma finale</h4>${EV.confermatoAt ? `<div class="alert ok">Scelte confermate il ${esc(new Date(EV.confermatoAt).toLocaleDateString('it-IT'))}. Non è più possibile modificarle da qui: per qualsiasi cambiamento contattate La Stella.</div>`
+      : `<div class="alert"><b>Attenzione:</b> dopo la conferma <b>non sarà più possibile modificare</b> le scelte (menù, allestimenti, invitati, richieste). Per eventuali cambiamenti dovrete contattare direttamente La Stella, che valuterà la fattibilità.</div><p class="muted">Quando avete deciso tutto premete «Conferma definitivamente»: lo staff riceve l'avviso e procede con l'organizzazione.</p><button class="btn" data-confirm ${dis('all')}>Conferma definitivamente</button>`}</div>`;
 }
 function allestVoce(v) {
   const st = D.allest[v.id] || {}, sel = v.opts.find(o => o.id === st.opt), sur = o => (o.sur ? ` · +€${o.sur}/pers` : o.fix ? ` · €${o.fix}` : o.quota ? ' · su quotazione' : '');
@@ -81,7 +82,10 @@ function allestVoce(v) {
 }
 function guestsView() {
   const lk = locked('guests'), n = D.guests.length;
-  return `<h2>Invitati</h2>${lockNote('guests')}<p class="muted">Inserite gli invitati e segnalate allergie, intolleranze o diete: è fondamentale per la sicurezza in cucina. La disposizione ai tavoli viene definita insieme al nostro staff. Invitati inseriti: <b>${n}</b>.</p>
+  return `<h2>Invitati</h2>${lockNote('guests')}
+  <div class="card"><h4>Compilate l'elenco con Excel</h4><p class="muted small">Scaricate il modello, compilatelo (una riga per invitato, con allergie e intolleranze) e caricatelo qui: importiamo tutte le informazioni in automatico.</p>
+    <div class="row"><a class="btn alt" href="template/Invitati_e_Tavoli_La_Stella.xlsx" download>⭳ Scarica il modello Excel</a><label class="btn ${lk ? 'alt' : ''}" style="${lk ? 'opacity:.5;pointer-events:none' : ''}">⭱ Carica il file compilato<input type="file" id="xls" accept=".xlsx,.xls,.csv" hidden ${lk ? 'disabled' : ''}></label></div></div>
+  <p class="muted">Oppure inserite gli invitati e segnalate allergie, intolleranze o diete: è fondamentale per la sicurezza in cucina. La disposizione ai tavoli viene definita insieme al nostro staff. Invitati inseriti: <b>${n}</b>.</p>
   ${D.guests.map((g, i) => `<div class="card"><div class="grid2"><div><label class="f">Nome</label><input type="text" data-g="${i}" data-f="nome" value="${esc(g.nome)}" ${lk ? 'disabled' : ''}></div><div><label class="f">Cognome</label><input type="text" data-g="${i}" data-f="cognome" value="${esc(g.cognome)}" ${lk ? 'disabled' : ''}></div>
     <div><label class="f">Fascia</label><select data-g="${i}" data-f="fascia" ${lk ? 'disabled' : ''}>${['Adulto', 'Bambino', 'Neonato'].map(f => `<option ${g.fascia === f ? 'selected' : ''}>${f}</option>`).join('')}</select></div>
     <div><label class="f">Dieta</label><select data-g="${i}" data-f="dieta" ${lk ? 'disabled' : ''}>${DIETE.map(f => `<option value="${f}" ${g.dieta === f ? 'selected' : ''}>${f || '—'}</option>`).join('')}</select></div></div>
@@ -113,7 +117,7 @@ document.addEventListener('click', e => {
   const t = e.target.closest('[data-tab],[data-save],[data-gadd],[data-gdel],[data-gt],[data-spadd],[data-spdel],[data-confirm]'); if (!t) return;
   if (t.dataset.tab) { tab = t.dataset.tab; msg = ''; draw(); scrollTo(0, 0); }
   else if ('save' in t.dataset) save();
-  else if ('confirm' in t.dataset) { if (confirm('Confermare le scelte fatte?')) save({ conferma: true }); }
+  else if ('confirm' in t.dataset) { if (confirm('Dopo la conferma NON potrete più modificare le scelte. Confermare definitivamente?')) save({ conferma: true }); }
   else if ('gadd' in t.dataset) { D.guests.push({ id: uid(), nome: '', cognome: '', fascia: 'Adulto', dieta: '', allergie: [], intolleranze: [], altro: '', note: '', seggiolone: false }); dirty = true; msg = ''; draw(); }
   else if (t.dataset.gdel !== undefined) { if (confirm('Eliminare questo invitato?')) { D.guests.splice(+t.dataset.gdel, 1); dirty = true; draw(); } }
   else if (t.dataset.gt !== undefined) { if (locked('guests')) return; const a = D.guests[+t.dataset.gt][t.dataset.f], v = t.dataset.v, i = a.indexOf(v); i < 0 ? a.push(v) : a.splice(i, 1); dirty = true; msg = ''; draw(); }
@@ -139,5 +143,34 @@ document.addEventListener('change', e => {
   else if (t.dataset.al !== undefined) { const st = (D.allest[t.dataset.al] = D.allest[t.dataset.al] || {}); st[t.dataset.f] = t.dataset.v !== undefined ? t.dataset.v : t.value; dirty = true; draw(); }
   else if (t.dataset.g !== undefined) { D.guests[+t.dataset.g][t.dataset.f] = t.value; dirty = true; draw(); }
   else if (t.dataset.sp !== undefined) { D.special[+t.dataset.sp][t.dataset.f] = t.value; dirty = true; draw(); }
+});
+
+/* ---- import da Excel (stesso modello usato dallo staff) ---- */
+const norm = s => String(s ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+function parseGuests(wb) {
+  const sh = wb.Sheets[wb.SheetNames.find(n => /invitat/.test(norm(n))) || wb.SheetNames[0]]; if (!sh) return [];
+  const rows = XLSX.utils.sheet_to_json(sh, { header: 1, defval: '', raw: false }), head = (rows[0] || []).map(norm), col = {}, aC = [], iC = [];
+  head.forEach((h, i) => {
+    if (h === 'nome') col.nome = i; else if (h === 'cognome') col.cognome = i; else if (h === 'fascia') col.fascia = i; else if (h === 'dieta') col.dieta = i; else if (h.startsWith('seggiolon')) col.segg = i;
+    else if (h.startsWith('allergia')) { const t = h.replace(/^allergia\s*/, ''), k = ALLERGIE.find(([, l]) => t.startsWith(norm(l).split(' ')[0])); if (k) aC.push([i, k[0]]); }
+    else if (h.startsWith('intolleranza')) { const t = h.replace(/^intolleranza\s*/, ''), k = INTOLL.find(([, l]) => t.startsWith(norm(l))); if (k) iC.push([i, k[0]]); }
+    else if (h.startsWith('altre allergie')) col.altro = i; else if (h.startsWith('note')) col.note = i;
+  });
+  const yes = v => { const s = norm(v); return s !== '' && !['no', '0', 'n', 'false'].includes(s); }, dm = Object.fromEntries(DIETE.filter(Boolean).map(d => [norm(d), d]));
+  return rows.slice(1).map(r => {
+    const nome = String(r[col.nome] ?? '').trim(), cognome = String(r[col.cognome] ?? '').trim(); if (!nome && !cognome) return null;
+    const f = norm(r[col.fascia]), d = norm(r[col.dieta]);
+    return { id: uid(), nome, cognome, fascia: f.startsWith('b') ? 'Bambino' : f.startsWith('n') ? 'Neonato' : 'Adulto', dieta: dm[d] || '', allergie: aC.filter(([i]) => yes(r[i])).map(([, k]) => k), intolleranze: iC.filter(([i]) => yes(r[i])).map(([, k]) => k),
+      altro: [String(r[col.altro] ?? '').trim(), d && !dm[d] ? 'Dieta: ' + r[col.dieta] : ''].filter(Boolean).join(' · '), note: String(r[col.note] ?? '').trim(), seggiolone: col.segg != null && yes(r[col.segg]) };
+  }).filter(Boolean);
+}
+document.addEventListener('change', async e => {
+  if (e.target.id !== 'xls' || !e.target.files[0]) return;
+  try {
+    const list = parseGuests(XLSX.read(await e.target.files[0].arrayBuffer(), { type: 'array' }));
+    if (!list.length) { alert('Nessun invitato trovato nel file: usate il modello scaricato da questa pagina.'); return; }
+    const keep = D.guests.length && !confirm(`Il file contiene ${list.length} invitati.\n\nOK = sostituisce l'elenco attuale (${D.guests.length}).\nAnnulla = li aggiunge a quelli già inseriti.`);
+    D.guests = keep ? D.guests.concat(list) : list; dirty = true; msg = `Importati ${list.length} invitati: controllate e premete «Salva le modifiche».`; draw();
+  } catch (err) { alert('Impossibile leggere il file: ' + (err.message || err)); }
 });
 boot();

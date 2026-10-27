@@ -11,8 +11,8 @@ h3 { font-size:14px; letter-spacing:.08em; text-transform:uppercase; color:var(-
 h4 { margin:0 0 6px; }
 .muted { color:var(--muted); } .small { font-size:13px; }
 .card { background:#fff; border:1px solid var(--line); border-radius:8px; padding:16px; margin-bottom:14px; }
-.tabs { display:flex; gap:4px; overflow-x:auto; border-bottom:1px solid var(--line); margin:14px 0 18px; }
-.tabs button { background:none; border:0; border-bottom:3px solid transparent; padding:10px 14px; font:inherit; color:var(--muted); cursor:pointer; white-space:nowrap; }
+.tabs { display:flex; flex-wrap:wrap; gap:0 2px; border-bottom:1px solid var(--line); margin:14px 0 18px; }
+.tabs button { background:none; border:0; border-bottom:3px solid transparent; padding:9px 10px; font-size:14px; font:inherit; color:var(--muted); cursor:pointer; white-space:nowrap; }
 .tabs button.on { color:var(--navy); border-color:var(--sand); font-weight:700; }
 .opt { display:flex; gap:10px; align-items:flex-start; padding:9px 12px; border:1px solid var(--line); border-radius:6px; margin-bottom:6px; cursor:pointer; background:#fff; }
 .opt.on { border-color:var(--navy); box-shadow:0 0 0 1px var(--navy); background:#fbfaf8; }

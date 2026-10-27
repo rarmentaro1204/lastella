@@ -59,6 +59,7 @@ export function createApi({ stores, secret, seed = null, now = () => new Date().
 
   async function handle(req, path) {
     const method = req.method;
+    if (Number(req.headers.get('content-length') || 0) > 1_000_000) return err(413, 'Richiesta troppo grande.');
     const body = ['POST', 'PUT'].includes(method) ? await req.json().catch(() => ({})) : {};
 
     /* ---------- pubblici ---------- */

@@ -13,7 +13,7 @@ const FASCE = ['Adulto', 'Bambino', 'Neonato', 'Staff'];
 
 /* blocchi: dopo le scadenze il cliente non può più modificare quella parte */
 export function portalLocks(E) {
-  const q = E.q || {}, today = isoToday(), closed = ['Annullato', 'Concluso'].includes(E.stato) || (E.portale && E.portale.attivo === false);
+  const q = E.q || {}, today = isoToday(), closed = ['Annullato', 'Concluso'].includes(E.stato) || !!(E.portale && (E.portale.attivo === false || E.portale.confermatoAt)) || (!!q.data && today > q.data);
   const past = d => !!d && today > d;
   return { all: closed, menu: closed || past(q.scadenzaMenu), allest: closed || past(q.scadenzaAllest), guests: closed || (q.data ? past(addDays(q.data, -10)) : false) };
 }
