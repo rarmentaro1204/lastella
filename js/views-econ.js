@@ -103,20 +103,31 @@ function pagamentiHtml(E, q) {
   const P = E.pagamenti, iva = S.settings.iva / 100, tot = P.reduce((a, x) => a + (Number(x.importo) || 0), 0), paid = P.filter(x => x.paid).reduce((a, x) => a + (Number(x.importo) || 0), 0);
   const diff = q.imponibile - tot;
   return `<div class="card noprint" style="margin-top:18px"><div class="chead"><h3>Scadenziario pagamenti</h3><span class="muted small">importi oltre IVA ${S.settings.iva}%</span>
-    ${E.pagAuto ? '<span class="pill ok">automatico dalla data dell\'evento</span>' : '<span class="pill warn">modificato a mano</span> <button class="btn sm alt" data-act="pay-auto">Ricalcola automaticamente</button>'}<button class="btn sm alt right" data-act="pay-add">＋ Rata</button></div>
+    ${E.pagAuto ? '<span class="pill ok">automatico dalla data dell\'evento</span>' : '<span class="pill warn">modificato a mano</span> <button class="btn sm alt" data-act="pay-auto">Ricalcola automaticamente</button>'}<button class="btn sm alt right" data-act="pay-add">＋ Caparra</button></div>
     ${!E.q.data ? '<div class="alert" style="margin:10px 0">Scegli la data dell\'evento nel Questionario per calcolare le scadenze.</div>' : ''}
     ${P.length ? `<table class="tb"><thead><tr><th style="width:90px">Stato</th><th>Descrizione</th><th>Scadenza</th><th class="num">Importo (iva escl.)</th><th class="num">Iva incl.</th><th></th></tr></thead><tbody>
     ${P.map((x, i) => { const late = !x.paid && x.due && new Date(x.due + 'T23:59:59') < new Date(); return `<tr><td>${x.paid ? '<span class="pill ok">versato</span>' : '<span class="pill">da versare</span>'}</td><td><input type="text" data-b="pagamenti.${i}.desc" data-hook="paymanual" value="${esc(x.desc)}"></td>
-      <td><input type="date" style="width:auto" data-b="pagamenti.${i}.due" data-hook="paymanual" data-r value="${esc(x.due)}">${late ? ' <span class="pill bad">scaduta</span>' : ''}</td><td class="num"><input type="number" style="width:110px" data-b="pagamenti.${i}.importo" data-hook="paymanual" data-r value="${x.importo}"></td><td class="num">${eur((Number(x.importo) || 0) * (1 + iva))}</td><td><button class="btn ghost sm" data-act="pay-del" data-i="${i}">✕</button></td></tr>`; }).join('')}</tbody>
+      <td><input type="date" style="width:auto" data-b="pagamenti.${i}.due" data-hook="paymanual" data-r value="${esc(x.due)}">${late ? ' <span class="pill bad">scaduta</span>' : ''}</td><td class="num">${i === P.length - 1 ? `<b>${eur(x.importo)}</b> <span class="pill">saldo · calcolato</span>` : `<input type="number" step="0.01" style="width:110px" data-b="pagamenti.${i}.importo" data-hook="paymanual" data-r value="${x.importo}">`}</td><td class="num">${i === P.length - 1 ? eur((Number(x.importo) || 0) * (1 + iva)) : `<input type="number" step="0.01" style="width:110px" data-paygross="${i}" value="${Math.round((Number(x.importo) || 0) * (1 + iva) * 100) / 100}">`}</td><td>${i === P.length - 1 ? '' : `<button class="btn ghost sm" data-act="pay-del" data-i="${i}" title="Elimina caparra">✕</button>`}</td></tr>`; }).join('')}</tbody>
     <tfoot><tr><td></td><td>Totale rate</td><td></td><td class="num">${eur(tot)}</td><td class="num">${eur(tot * (1 + iva))}</td><td></td></tr></tfoot></table>
     <div class="row" style="margin-top:10px"><span class="pill ok">Incassato ${eur(paid)}</span><span class="pill ${Math.abs(diff) < 0.5 ? 'ok' : 'warn'}">${Math.abs(diff) < 0.5 ? 'Rate = preventivo' : (diff > 0 ? 'Da pianificare ' + eur(diff) : 'Rate oltre il preventivo di ' + eur(-diff)) + ' (iva escl.)'}</span><span class="pill">Residuo da incassare ${eur(q.imponibile - paid)} iva escl.</span></div>`
     : '<p class="muted">Nessuna rata.</p>'}
-    <p class="hint" style="margin-top:8px">Regole dal contratto (modificabili in Impostazioni → Scadenziario): caparra alla firma, completamento del 30 % a un anno dall'evento, 40 % a 120 giorni lavorativi, saldo a 10 giorni lavorativi. Gli importi seguono il totale del preventivo.</p></div>`;
+    <p class="hint" style="margin-top:8px">Regole dal contratto (modificabili in Impostazioni → Scadenziario): caparra alla firma, completamento del 30 % a un anno dall'evento, 40 % a 120 giorni lavorativi, saldo a 10 giorni lavorativi. Puoi aggiungere o togliere caparre e cambiarne gli importi (anche IVA inclusa): il <b>saldo</b> è sempre il totale del preventivo meno la somma delle caparre.</p></div>`;
 }
 HOOKS.paymanual = () => { curEvent().pagAuto = false; };
 ACTIONS['pay-auto'] = () => { const E = curEvent(); E.pagAuto = true; syncPagamenti(E); save(); rr(); };
-ACTIONS['pay-add'] = () => { curEvent().pagAuto = false; curEvent().pagamenti.push({ desc: '', due: '', importo: '', paid: false }); save(); rr(); };
-ACTIONS['pay-del'] = el => { curEvent().pagAuto = false; curEvent().pagamenti.splice(+el.dataset.i, 1); save(); rr(); };
+ACTIONS['pay-add'] = () => {
+  const E = curEvent(), P = E.pagamenti; E.pagAuto = false;
+  if (!P.length) P.push({ desc: 'Saldo', due: E.q.data ? isoOf(workdaysBefore(E.q.data, 10)) : '', importo: 0, paid: false, saldo: true });
+  const n = P.length;                                        // numero della nuova caparra: inserita prima del saldo
+  P.splice(P.length - 1, 0, { desc: `Caparra ${n}`, due: '', importo: 0, paid: false });
+  fixSaldo(P, computeQuote(E).imponibile); save(); rr();
+};
+document.addEventListener('change', e => {
+  const el = e.target; if (el.dataset.paygross === undefined) return;
+  const E = curEvent(), x = E.pagamenti[+el.dataset.paygross]; if (!x) return;
+  E.pagAuto = false; x.importo = Math.round((Number(el.value) || 0) / (1 + S.settings.iva / 100) * 100) / 100; save(); rr();
+});
+ACTIONS['pay-del'] = el => { const E = curEvent(); E.pagAuto = false; E.pagamenti.splice(+el.dataset.i, 1); fixSaldo(E.pagamenti, computeQuote(E).imponibile); save(); rr(); };
 ACTIONS['rt-add'] = () => { curEvent().econ.rettifiche.push({ desc: '', importo: '' }); save(); rr(); };
 ACTIONS['rt-del'] = el => { curEvent().econ.rettifiche.splice(+el.dataset.i, 1); save(); rr(); };
 ACTIONS['export-quote'] = () => {

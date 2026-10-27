@@ -85,7 +85,7 @@ function ecoView() {
     S.settings = hydrateSettings(pr.settings);
     const E = hydrate({ q: pr.event.q, allest: D.allest, addons: pr.event.addons, special: pr.event.special, econ: pr.event.econ, pagAuto: pr.event.pagAuto });
     Q = computeQuote(E);
-    plan = pr.event.pagAuto ? buildScadenziario(E, Q.imponibile).map((p, i) => ({ ...p, paid: !!(pr.event.pagamenti[i] && pr.event.pagamenti[i].paid) })) : pr.event.pagamenti;
+    plan = pr.event.pagAuto ? buildScadenziario(E, Q.imponibile).map((p, i) => ({ ...p, paid: !!(pr.event.pagamenti[i] && pr.event.pagamenti[i].paid) })) : (() => { const P = pr.event.pagamenti.map(p => ({ ...p })); fixSaldo(P, Q.imponibile); return P; })();
   } catch (err) { return '<div class="card">Non è stato possibile calcolare il riepilogo: contattate La Stella.</div>'; }
   const iva = S.settings.iva, secs = [...new Set(Q.lines.map(l => l.sec))];
   return `<h2>Riepilogo economico</h2>${dirty ? '<div class="alert">Avete modifiche non salvate: salvatele per aggiornare il riepilogo.</div>' : ''}

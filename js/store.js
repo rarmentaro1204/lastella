@@ -259,9 +259,15 @@ function buildScadenziario(E, total) {
     return { desc: r.desc, due, importo: amt, paid: false };
   });
 }
+/* il saldo (ultima rata) è sempre il totale (iva escl.) meno la somma delle caparre */
+function fixSaldo(P, imponibile) {
+  if (!P.length) return false;
+  const last = P[P.length - 1], rest = P.slice(0, -1).reduce((a, x) => a + (Number(x.importo) || 0), 0), v = Math.max(0, Math.round((imponibile - rest) * 100) / 100);
+  const ch = last.importo !== v || last.saldo !== true; last.importo = v; last.saldo = true; return ch;
+}
 function syncPagamenti(E) {
-  if (!E.pagAuto) return false;
-  const nw = buildScadenziario(E, computeQuote(E).imponibile);
+  if (!E.pagAuto) return fixSaldo(E.pagamenti, computeQuote(E).imponibile);
+  const imp = computeQuote(E).imponibile, nw = buildScadenziario(E, imp); fixSaldo(nw, imp);
   nw.forEach((x, i) => { const o = E.pagamenti[i]; if (o && o.paid) Object.assign(x, { paid: true }, ...['paidAt', 'paidAmt', 'paidMethod', 'paidNote'].filter(k => o[k] !== undefined).map(k => ({ [k]: o[k] }))); });
   if (JSON.stringify(nw) === JSON.stringify(E.pagamenti)) return false;
   E.pagamenti = nw; return true;

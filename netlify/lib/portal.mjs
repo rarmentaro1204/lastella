@@ -40,7 +40,7 @@ function portalPricing(E, settings, year) {
   return {
     settings: { ...pick(st, ['iva', 'bambinoPrezzo', 'neonatoPrezzo', 'staffPrezzo', 'supplementiSu', 'listini', 'addons', 'prezzi', 'scadenziario']), catalogs: cat ? { [year]: { allestimenti: cat.allestimenti } } : {} },
     event: { q: pick(q, ['adulti', 'bambini', 'neonati', 'staff', 'giorno', 'data', 'listino', 'firma']), addons: E.addons || {}, econ: { rettifiche: ((E.econ || {}).rettifiche || []).map(r => ({ desc: r.desc, importo: r.importo })) },
-      special: (E.special || []).map(s => pick(s, ['tipo', 'titolo', 'stato', 'porzioni', 'prezzoUnit', 'forfait'])), pagAuto: E.pagAuto !== false, pagamenti: (E.pagamenti || []).map(p => pick(p, ['desc', 'due', 'importo', 'paid'])) },
+      special: (E.special || []).map(s => pick(s, ['tipo', 'titolo', 'stato', 'porzioni', 'prezzoUnit', 'forfait'])), pagAuto: E.pagAuto !== false, pagamenti: (E.pagamenti || []).map(p => pick(p, ['desc', 'due', 'importo', 'paid', 'saldo'])) },
   };
 }
 export function portalView(E, settings) {
