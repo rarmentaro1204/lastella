@@ -320,7 +320,12 @@ ACTIONS['demo-40'] = async () => { const n = await loadDemoSeed(); toast(n ? `Ag
 ACTIONS['demo-clear'] = async () => {
   const demo = S.events.filter(isDemo); if (!demo.length) return;
   if (!confirm(`Eliminare i ${demo.length} eventi di esempio (e le location di esempio)?`)) return;
-  if (CLOUD) { for (const E of demo) if (!(await cloudDelete(E.id))) return; }
+  if (CLOUD) {
+    toast('Eliminazione in corso…');
+    const r = await http('POST', 'events/delete', { ids: demo.map(e => e.id) });
+    if (!r.ok) { toast(r.body.error || 'Eliminazione non riuscita: riprova'); return; }
+    demo.forEach(e => { delete REV[e.id]; delete BASE[e.id]; });
+  }
   S.events = S.events.filter(e => !isDemo(e)); S.settings.locations = S.settings.locations.filter(l => !l.demo); save(); toast('Eventi di esempio eliminati'); go('home'); rr();
 };
 const demoCard = () => { const n = S.events.filter(isDemo).length; return `<div class="card" style="margin-top:16px"><h3>Dati dimostrativi</h3><p class="muted">40 eventi bozza per mostrare le funzioni: 10 nel 2026 e 30 da marzo a settembre 2027 (75 % matrimoni, il resto mix di altri eventi), con stati, menù, allestimenti, add-on, richieste speciali, rate e alcuni elenchi invitati.${n ? ` Al momento ci sono <b>${n}</b> eventi di esempio.` : ''}</p><div class="row">${n < 40 ? '<button class="btn sand" data-act="demo-40">＋ Aggiungi i 40 eventi di esempio</button>' : ''}${n ? `<button class="btn danger" data-act="demo-clear">Elimina gli eventi di esempio (${n})</button>` : ''}</div></div>`; };

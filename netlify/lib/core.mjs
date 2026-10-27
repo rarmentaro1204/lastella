@@ -51,6 +51,13 @@ export function createApi({ stores, secret, seed = null, now = () => new Date().
     await meta.setJSON('seeded', { at });
   }
 
+  /* elimina un evento e revoca l'eventuale link del portale cliente */
+  async function dropEvent(id) {
+    const cur = await events.get(id, { type: 'json' });
+    if (cur && cur.portale && cur.portale.token) await portal.delete(cur.portale.token);
+    await events.delete(id);
+  }
+
   async function authUser(req) {
     const h = req.headers.get('authorization') || '';
     const email = readToken(secret, h.replace(/^Bearer\s+/i, '')); if (!email) return null;
@@ -151,6 +158,14 @@ export function createApi({ stores, secret, seed = null, now = () => new Date().
       return out({ rev, token: E.portale.token || null });
     }
 
+    if (path === 'events/delete' && method === 'POST') {
+      if (!admin) return err(403, 'Solo un amministratore può eliminare gli eventi.');
+      const ids = (Array.isArray(body.ids) ? body.ids : []).filter(id => typeof id === 'string' && ID_RE.test(id)).slice(0, 200);
+      for (let i = 0; i < ids.length; i += 10) await Promise.all(ids.slice(i, i + 10).map(dropEvent));
+      await updateIndex(ix => { ids.forEach(id => delete ix.events[id]); });
+      return out({ deleted: ids.length });
+    }
+
     /* ---------- dati ---------- */
     if (path === 'index' && method === 'GET') return out(await getIndex());
     if (path === 'state' && method === 'GET') {
@@ -176,7 +191,7 @@ export function createApi({ stores, secret, seed = null, now = () => new Date().
       if (method === 'GET') return cur ? out({ id, rev: cur.metadata.rev, data: cucina ? kitchenEvent(cur.data) : cur.data, by: cur.metadata.by, at: cur.metadata.at }) : err(404, 'Evento non trovato.');
       if (method === 'DELETE') {
         if (!admin) return err(403, 'Solo un amministratore può eliminare gli eventi.');
-        await events.delete(id); await updateIndex(i => { delete i.events[id]; }); return out({ ok: true });
+        await dropEvent(id); await updateIndex(i => { delete i.events[id]; }); return out({ ok: true });
       }
       if (method === 'PUT') {
         if (!body.data || typeof body.data !== 'object') return err(400, 'Dati mancanti.');
