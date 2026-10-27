@@ -31,7 +31,7 @@ const SeatPlan = (() => {
   const msg = (h, m) => (h.toast ? h.toast(m) : alert(m));
 
   /* ---- geometria ---- */
-  const LW = 104, LH = 46;
+  const LW = 104, LH = 58;
   function geometry(t) {
     const n = t.seats.length, det = S.det;
     if (!det) {
@@ -125,7 +125,7 @@ const SeatPlan = (() => {
   }
   function labHtml(h, gid, l, p) {
     const g = gid && h.guests.find(x => x.id === gid); if (!g) return '';
-    return `<div class="sp-lab" style="left:${l[0]}px;top:${l[1]}px;width:${LW}px;min-height:${LH}px"><b>${esc(g.nome || '')}</b> ${esc(g.cognome || '')}<div class="fls">${flagHtml(flagsOf(g), 2)}</div></div>`;
+    return `<div class="sp-lab" style="left:${l[0]}px;top:${l[1]}px;width:${LW}px;min-height:${LH}px"><b>${esc(g.nome || "")}</b><br>${esc(g.cognome || "")}<div class="fls">${flagHtml(flagsOf(g), 2)}</div></div>`;
   }
   function tableHtml(h, t) {
     const g = geometry(t), occ = occOf(t), [mn, mx] = lim(t), sel = S.selT === t.id, bad = t.forma !== 'rett' && occ > 0 && occ < mn;
