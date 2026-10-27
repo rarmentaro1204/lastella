@@ -296,15 +296,13 @@ function tableCard(E, t) {
     ${UI.tlist ? `<ul class="slist">${t.seats.map((id, i) => { const g = id && E.guests.find(x => x.id === id); return g ? `<li data-act="seat" data-t="${t.id}" data-i="${i}"><span class="n">${i + 1}</span><span class="nm"><b>${esc(fullName(g))}</b></span>${iconsHtml(g)}</li>` : `<li class="empty" data-act="seat" data-t="${t.id}" data-i="${i}"><span class="n">${i + 1}</span><span class="nm">posto libero</span></li>`; }).join('')}</ul>` : ''}</div>`;
 }
 function viewTavoli(E) {
-  const free = E.guests.filter(g => !seatOf(E, g.id)), totalSeats = E.tables.reduce((a, t) => a + t.seats.length, 0), seated = E.guests.length - free.length;
-  const pool = `<div class="pool" data-pool><h4>Da assegnare <span class="badge">${free.length}</span></h4><div class="lst">${free.map(g => `<div class="gchip" draggable="true" data-g="${g.id}" style="flex-wrap:wrap"><span class="nm">${esc(fullName(g))}</span>${iconsHtml(g)}<span style="flex-basis:100%">${seatSelects(E, g, true)}</span></div>`).join('') || '<p class="muted small" style="padding:6px">Tutti gli invitati hanno un posto 🎉</p>'}</div></div>`;
-  return `<div class="secthead"><div><h2>Tavoli e mappa della sala</h2><p>La disposizione scelta dagli sposi (dal foglio «Tavoli» dell'Excel). Trascina un invitato su un posto, oppure clicca un posto per assegnarlo. Passa il mouse su un posto per vedere tutte le particolarità.</p></div>
-    <div class="row right noprint"><button class="btn alt" data-act="table-add" data-f="tondo">＋ Tavolo tondo</button><button class="btn alt" data-act="table-add" data-f="rett">＋ Tavolo rettangolare</button>${free.length ? '<button class="btn sand" data-act="auto-seat">Assegna i posti liberi automaticamente</button>' : ''}<button class="btn alt" onclick="window.print()">🖨 Stampa</button></div></div>
-  <div class="tiles"><div class="tile"><b>${E.tables.length}</b><span>Tavoli</span></div><div class="tile"><b>${totalSeats}</b><span>Posti</span></div><div class="tile d"><b>${seated}</b><span>Assegnati</span></div><div class="tile ${free.length ? 'a' : ''}"><b>${free.length}</b><span>Da assegnare</span></div></div>
-  <div class="toolbar noprint"><label class="row"><input type="checkbox" ${UI.tlist ? 'checked' : ''} data-act="tlist"> Mostra l'elenco sotto ogni tavolo</label><span class="right">${legendHtml()}</span></div>
-  ${E.tables.length ? `<div class="tables-layout"><div class="tgrid">${E.tables.slice().sort((a, b) => a.num - b.num).map(t => tableCard(E, t)).join('')}</div><div class="noprint">${pool}</div></div>`
-    : `<div class="empty"><h3>Nessun tavolo</h3><p>Importa l'Excel (foglio «Tavoli») oppure aggiungi i tavoli a mano.</p><button class="btn" data-act="table-add" data-f="tondo">＋ Tavolo tondo</button> <button class="btn alt" data-act="table-add" data-f="rett">＋ Tavolo rettangolare</button></div>`}`;
+  return `<div class="secthead"><div><h2>Tavoli e mappa della sala</h2><p>A sinistra l'elenco invitati (con ricerca), a destra la sala. Trascina un invitato su un posto, trascina un tavolo dal suo titolo per spostarlo, trascina gli invitati seduti per cambiare la disposizione. Tavolo tondo da 8 a 11 persone, rettangolare senza limiti. Clicca un tavolo per cambiarne forma, posti e nome.</p></div></div>
+  <div class="toolbar noprint"><span class="right">${legendHtml()}</span></div>${SeatPlan.html(SeatPlan.host())}`;
 }
+SeatPlan.host = () => {
+  if (typeof ROUTE === 'undefined' || ROUTE.view !== 'event' || ROUTE.sec !== 'evento' || ROUTE.sub !== 'tavoli') return null;
+  const E = curEvent(); return E ? { guests: E.guests, tables: E.tables, change: save, ro: !!AUTH.cucina, toast, newId: uid, print: true } : null;
+};
 ACTIONS.tlist = el => { UI.tlist = el.checked; rr(); };
 ACTIONS['table-add'] = el => { const E = curEvent(); E.tables.push(newTable(E, el.dataset.f, el.dataset.f === 'tondo' ? 10 : 14)); save(); rr(); };
 ACTIONS['table-edit'] = el => {

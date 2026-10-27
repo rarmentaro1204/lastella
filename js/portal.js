@@ -5,7 +5,7 @@ const API = '/api/portal/' + encodeURIComponent(TOKEN);
 const ALLERGIE = [['glutine', 'Glutine'], ['crostacei', 'Crostacei'], ['uova', 'Uova'], ['pesce', 'Pesce'], ['arachidi', 'Arachidi'], ['soia', 'Soia'], ['latte', 'Latte'], ['guscio', 'Frutta a guscio'], ['sedano', 'Sedano'], ['senape', 'Senape'], ['sesamo', 'Sesamo'], ['solfiti', 'Solfiti'], ['lupini', 'Lupini'], ['molluschi', 'Molluschi']];
 const INTOLL = [['celiachia', 'Celiachia'], ['lattosio', 'Lattosio'], ['nichel', 'Nichel'], ['istamina', 'Istamina'], ['fruttosio', 'Fruttosio'], ['favismo', 'Favismo'], ['gravidanza', 'Gravidanza'], ['funghi', 'Funghi']];
 const DIETE = ['', 'Vegetariano', 'Vegano', 'Fruttariano', 'Pescetariano', 'Crudista', 'Halal', 'Kosher'];
-const TABS = [['home', 'Il tuo evento'], ['aperitivo', 'Aperitivo'], ['tavola', 'A tavola'], ['dolci', 'Dolci e vini'], ['allest', 'Allestimenti'], ['invitati', 'Invitati'], ['richieste', 'Richieste speciali'], ['fine', 'Note e conferma'], ['eco', 'Riepilogo economico']];
+const TABS = [['home', 'Il tuo evento'], ['aperitivo', 'Aperitivo'], ['tavola', 'A tavola'], ['dolci', 'Dolci e vini'], ['allest', 'Allestimenti'], ['invitati', 'Invitati'], ['tavoli', 'Tavoli'], ['richieste', 'Richieste speciali'], ['fine', 'Note e conferma'], ['eco', 'Riepilogo economico']];
 let EV = null, D = null, tab = 'home', dirty = false, msg = '', saving = false;
 
 const fmt = iso => iso ? new Date(iso + 'T12:00:00').toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }) : '—';
@@ -15,7 +15,7 @@ async function call(method, body) {
   return { ok: r.ok, status: r.status, body: await r.json().catch(() => ({})) };
 }
 function loadEv(ev) {
-  EV = ev; D = { menu: clone(ev.menu), allest: clone(ev.allest), guests: clone(ev.guests), special: clone(ev.special), nota: ev.nota || '' }; dirty = false;
+  EV = ev; D = { menu: clone(ev.menu), allest: clone(ev.allest), guests: clone(ev.guests), tables: clone(ev.tables || []), special: clone(ev.special), nota: ev.nota || '' }; dirty = false;
   const m = D.menu; for (const k of ['show', 'passaggio', 'extraBuvette', 'pre', 'entree', 'primi', 'secondi', 'extraVini', 'lounge']) m[k] = m[k] || [];
 }
 async function boot() {
@@ -62,6 +62,7 @@ function view() {
     <h3>Vino bianco</h3>${C.vini.bianchi.map(v => radio('menu.bianco', v, v, '', 'menu')).join('')}<h3>Vino rosso</h3>${C.vini.rossi.map(v => radio('menu.rosso', v, v, '', 'menu')).join('')}`;
   if (tab === 'allest') return `<h2>Allestimenti</h2>${lockNote('allest')}${C.allestimenti.map(g => `<h3>${esc(g.gruppo)}</h3>${g.voci.map(v => v.fisso ? `<div class="card"><b>${esc(v.nome)}</b> <span class="pill ok">incluso</span><div class="muted small">${esc(v.info)}</div></div>` : allestVoce(v)).join('')}`).join('')}`;
   if (tab === 'invitati') return guestsView();
+  if (tab === 'tavoli') return `<h2>Tavoli</h2>${lockNote('guests')}<p class="muted">Create i tavoli e sistemate gli invitati: trascinate un invitato su un posto e trascinate il tavolo dal titolo per spostarlo in sala. Tavolo tondo da 8 a 11 persone, rettangolare senza limiti. La disposizione sarà rifinita insieme al nostro staff.</p>${SeatPlan.html(SeatPlan.host())}`;
   if (tab === 'richieste') return `<h2>Richieste speciali</h2>${lockNote('all')}<p class="muted">Un piatto fuori menù, un'isola personalizzata, una variante per allergie o diete particolari: descrivetela e il nostro chef vi risponderà con fattibilità e costo.</p>
     ${D.special.map((s, i) => `<div class="card"><div class="row"><select data-sp="${i}" data-f="kind" style="max-width:260px" ${dis('all')}>${[['piatto', 'Piatto personalizzato'], ['isola', 'Isola personalizzata'], ['dieta', 'Variante dietetica / allergeni'], ['altro', 'Altro']].map(([k, l]) => `<option value="${k}" ${s.kind === k ? 'selected' : ''}>${l}</option>`).join('')}</select>${s.stato ? `<span class="pill ${s.stato === 'Approvato' ? 'ok' : 'warn'}">${esc(s.stato)}</span>` : ''}<button class="btn alt sm" data-spdel="${i}" ${dis('all')}>Elimina</button></div>
       <div style="margin-top:8px"><input type="text" data-sp="${i}" data-f="titolo" placeholder="Titolo (es. Torta senza glutine)" value="${esc(s.titolo)}" ${dis('all')}></div><div style="margin-top:8px"><textarea data-sp="${i}" data-f="descr" placeholder="Descrizione" ${dis('all')}>${esc(s.descr)}</textarea></div></div>`).join('') || '<div class="muted">Nessuna richiesta.</div>'}
@@ -120,7 +121,7 @@ function draw() {
 }
 async function savePortal(extra = {}) {
   saving = true; msg = ''; draw();
-  const body = { menu: D.menu, allest: D.allest, guests: D.guests, special: D.special, nota: D.nota, ...extra };
+  const body = { menu: D.menu, allest: D.allest, guests: D.guests, tables: D.tables, special: D.special, nota: D.nota, ...extra };
   const r = await call('PUT', body); saving = false;
   if (!r.ok) { msg = r.body.error || 'Errore, riprova'; draw(); return; }
   const keep = tab; loadEv(r.body.event); tab = keep;
@@ -134,7 +135,7 @@ document.addEventListener('click', e => {
   else if ('save' in t.dataset) savePortal();
   else if ('confirm' in t.dataset) { if (confirm('Dopo la conferma NON potrete più modificare le scelte. Confermare definitivamente?')) savePortal({ conferma: true }); }
   else if ('gadd' in t.dataset) { D.guests.push({ id: uid(), nome: '', cognome: '', fascia: 'Adulto', dieta: '', allergie: [], intolleranze: [], altro: '', note: '', seggiolone: false }); dirty = true; msg = ''; draw(); }
-  else if (t.dataset.gdel !== undefined) { if (confirm('Eliminare questo invitato?')) { D.guests.splice(+t.dataset.gdel, 1); dirty = true; draw(); } }
+  else if (t.dataset.gdel !== undefined) { if (confirm('Eliminare questo invitato?')) { D.guests.splice(+t.dataset.gdel, 1); syncSeats(); dirty = true; draw(); } }
   else if (t.dataset.gt !== undefined) { if (locked('guests')) return; const a = D.guests[+t.dataset.gt][t.dataset.f], v = t.dataset.v, i = a.indexOf(v); i < 0 ? a.push(v) : a.splice(i, 1); dirty = true; msg = ''; draw(); }
   else if ('spadd' in t.dataset) { D.special.push({ id: uid(), kind: 'piatto', titolo: '', descr: '', stato: '' }); dirty = true; draw(); }
   else if (t.dataset.spdel !== undefined) { D.special.splice(+t.dataset.spdel, 1); dirty = true; draw(); }
@@ -184,7 +185,12 @@ document.addEventListener('change', async e => {
     const list = parseGuests(XLSX.read(await e.target.files[0].arrayBuffer(), { type: 'array' }));
     if (!list.length) { alert('Nessun invitato trovato nel file: usate il modello scaricato da questa pagina.'); return; }
     const keep = D.guests.length && !confirm(`Il file contiene ${list.length} invitati.\n\nOK = sostituisce l'elenco attuale (${D.guests.length}).\nAnnulla = li aggiunge a quelli già inseriti.`);
-    D.guests = keep ? D.guests.concat(list) : list; dirty = true; msg = `Importati ${list.length} invitati: controllate e premete «Salva le modifiche».`; draw();
+    D.guests = keep ? D.guests.concat(list) : list; syncSeats(); dirty = true; msg = `Importati ${list.length} invitati: controllate e premete «Salva le modifiche».`; draw();
   } catch (err) { alert('Impossibile leggere il file: ' + (err.message || err)); }
 });
+
+/* ---- tavoli: stesso componente del gestionale ---- */
+function syncSeats() { const ids = new Set(D.guests.map(g => g.id)); D.tables.forEach(t => { t.seats = t.seats.map(x => (ids.has(x) ? x : null)); }); }
+function toastP(m) { const d = document.createElement('div'); d.textContent = m; d.style.cssText = 'position:fixed;left:50%;bottom:90px;transform:translateX(-50%);background:#2e3540;color:#fff;padding:10px 16px;border-radius:8px;z-index:9999;font-size:14px;max-width:90vw;text-align:center'; document.body.appendChild(d); setTimeout(() => d.remove(), 3200); }
+SeatPlan.host = () => (EV && D && tab === 'tavoli' ? { guests: D.guests, tables: D.tables, change() { dirty = true; msg = ''; updBar(); }, ro: locked('guests'), toast: toastP, newId: uid } : null);
 boot();

@@ -89,8 +89,11 @@ function cleanTables(arr, guests, cur = []) {
   const ids = new Set(guests.map(g => g.id)), used = new Set();
   return arr.slice(0, 60).map((t, i) => {
     if (!t || typeof t !== 'object') return null;
-    const seats = (Array.isArray(t.seats) ? t.seats : []).slice(0, 24).map(s => (typeof s === 'string' && ids.has(s) && !used.has(s) ? (used.add(s), s) : null));
-    return { id: ID_OK.test(t.id || '') ? t.id : randomBytes(5).toString('base64url'), num: Number.isInteger(t.num) ? t.num : i + 1, nome: str(t.nome, 60), forma: t.forma === 'rett' ? 'rett' : 'tondo', posti: seats.length || 1, seats: seats.length ? seats : [null] };
+    const forma = t.forma === 'rett' ? 'rett' : 'tondo';       // tondo: da 8 a 11 posti; rettangolare: da 1 a 24
+    let seats = (Array.isArray(t.seats) ? t.seats : []).slice(0, forma === 'tondo' ? 11 : 24).map(s => (typeof s === 'string' && ids.has(s) && !used.has(s) ? (used.add(s), s) : null));
+    while (seats.length < (forma === 'tondo' ? 8 : 1)) seats.push(null);
+    const pos = v => (Number.isFinite(v) ? Math.max(0, Math.min(4000, Math.round(v))) : undefined);
+    return { id: ID_OK.test(t.id || '') ? t.id : randomBytes(5).toString('base64url'), num: Number.isInteger(t.num) ? t.num : i + 1, nome: str(t.nome, 60), forma, posti: seats.length, seats, x: pos(t.x), y: pos(t.y) };
   }).filter(Boolean);
 }
 function cleanSpecial(arr, cur = []) {

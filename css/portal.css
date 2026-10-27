@@ -29,6 +29,7 @@ label.f { display:block; font-size:12px; color:var(--muted); margin-bottom:3px; 
 .grid2 { display:grid; grid-template-columns:repeat(auto-fill,minmax(240px,1fr)); gap:10px; }
 .btn { background:var(--navy); color:#fff; border:0; border-radius:6px; padding:10px 18px; font:inherit; font-weight:600; cursor:pointer; }
 .btn.alt { background:#fff; color:var(--navy); border:1px solid var(--navy); } .btn.sm { padding:5px 12px; font-size:13px; }
+.btn.sand { background:var(--sand); color:#fff; } .hint { font-size:12px; color:var(--muted); }
 .btn:disabled { opacity:.5; cursor:not-allowed; }
 .bar { position:fixed; left:0; right:0; bottom:0; background:#fff; border-top:1px solid var(--line); padding:12px 16px; display:flex; gap:10px; justify-content:center; align-items:center; flex-wrap:wrap; box-shadow:0 -4px 16px rgba(0,0,0,.06); }
 .sw { display:inline-block; width:14px; height:14px; border-radius:50%; border:1px solid #ccc; vertical-align:-2px; margin-right:4px; }
