@@ -84,17 +84,13 @@ function cleanGuests(arr, cur = []) {
     return { id, nome: str(g.nome, 60), cognome: str(g.cognome, 60), fascia: FASCE.includes(g.fascia) ? g.fascia : 'Adulto', dieta: str(g.dieta, 30), allergie: strArr(g.allergie, 20, 30), intolleranze: strArr(g.intolleranze, 20, 30), altro: str(g.altro, 120), note: str(g.note, 200), seggiolone: !!g.seggiolone };
   }).filter(g => g && (g.nome || g.cognome));
 }
-function cleanTables(arr, guests, cur = []) {
-  if (!Array.isArray(arr)) arr = cur;
-  const ids = new Set(guests.map(g => g.id)), used = new Set();
-  return arr.slice(0, 60).map((t, i) => {
-    if (!t || typeof t !== 'object') return null;
-    const forma = t.forma === 'rett' ? 'rett' : 'tondo';       // tondo: da 8 a 12 posti; rettangolare: da 1 a 24
-    let seats = (Array.isArray(t.seats) ? t.seats : []).slice(0, forma === 'tondo' ? 12 : 24).map(s => (typeof s === 'string' && ids.has(s) && !used.has(s) ? (used.add(s), s) : null));
-    while (seats.length < (forma === 'tondo' ? 8 : 1)) seats.push(null);
-    const pos = v => (Number.isFinite(v) ? Math.max(0, Math.min(4000, Math.round(v))) : undefined);
-    return { id: ID_OK.test(t.id || '') ? t.id : randomBytes(5).toString('base64url'), num: Number.isInteger(t.num) ? t.num : i + 1, nome: str(t.nome, 60), forma, posti: seats.length, seats, x: pos(t.x), y: pos(t.y) };
-  }).filter(Boolean);
+/* il cliente non cambia i tavoli (numero, forma, posti, posizione): può solo scegliere chi siede dove */
+function seatTables(cur, arr, guests) {
+  const ids = new Set(guests.map(g => g.id)), used = new Set(), byId = Object.fromEntries((Array.isArray(arr) ? arr : []).filter(t => t && typeof t === 'object').map(t => [t.id, t]));
+  return cur.map(t => {
+    const c = byId[t.id], src = c && Array.isArray(c.seats) && c.seats.length === t.seats.length ? c.seats : t.seats;
+    return { ...t, seats: src.map(x => (typeof x === 'string' && ids.has(x) && !used.has(x) ? (used.add(x), x) : null)) };
+  });
 }
 function cleanSpecial(arr, cur = []) {
   const mine = Array.isArray(arr) ? arr.slice(0, 20) : [];
@@ -115,7 +111,7 @@ export function applyPortalEdit(E, body, now) {
   if (body.allest !== undefined) { if (locks.allest) denied.push('allestimenti'); else set('allest', cleanAllest(body.allest, E.allest || {}), 'allestimenti'); }
   if (body.guests !== undefined || body.tables !== undefined) {
     if (locks.guests) denied.push('invitati e tavoli');
-    else { const g = cleanGuests(body.guests, E.guests || []); set('guests', g, 'invitati'); set('tables', cleanTables(body.tables, g, E.tables || []), 'tavoli'); }
+    else { const g = cleanGuests(body.guests, E.guests || []); set('guests', g, 'invitati'); set('tables', seatTables(E.tables || [], body.tables, g), 'disposizione ai tavoli'); }
   }
   if (body.special !== undefined) { if (locks.all) denied.push('richieste'); else set('special', cleanSpecial(body.special, E.special || []), 'richieste speciali'); }
   E.portale = E.portale || {};

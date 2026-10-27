@@ -83,7 +83,7 @@ const SeatPlan = (() => {
     if (prev) prev.t.seats[prev.i] = occ || null;
     t.seats[i] = gid; t.posti = t.seats.length;
   }
-  function firstFree(t) { let i = t.seats.indexOf(null); if (i < 0 && t.seats.length < lim(t)[1]) { t.seats.push(null); t.posti = t.seats.length; i = t.seats.length - 1; } return i; }
+  function firstFree(t, h) { let i = t.seats.indexOf(null); if (i < 0 && !(h && h.fixed) && t.seats.length < lim(t)[1]) { t.seats.push(null); t.posti = t.seats.length; i = t.seats.length - 1; } return i; }
   const occOf = t => t.seats.filter(Boolean).length;
   const label = t => t.nome || 'Tavolo ' + t.num;
 
@@ -112,7 +112,7 @@ const SeatPlan = (() => {
   }
   function autoSeat(h) {
     const free = h.guests.filter(g => g.fascia !== 'Neonato' && !seatOf(h, g.id)); if (!free.length) { msg(h, 'Nessun invitato da assegnare'); return; }
-    let n = 0; h.tables.slice().sort((a, b) => a.num - b.num).forEach(t => { let i; while (free.length && (i = firstFree(t)) >= 0) { t.seats[i] = free.shift().id; n++; } });
+    let n = 0; h.tables.slice().sort((a, b) => a.num - b.num).forEach(t => { let i; while (free.length && (i = firstFree(t, h)) >= 0) { t.seats[i] = free.shift().id; n++; } });
     msg(h, n + ' invitati assegnati' + (free.length ? ` · ${free.length} senza posto: tutti i tavoli sono al massimo, aggiungi un tavolo` : ''));
   }
 
@@ -129,7 +129,7 @@ const SeatPlan = (() => {
   }
   function tableHtml(h, t) {
     const g = geometry(t), occ = occOf(t), [mn, mx] = lim(t), sel = S.selT === t.id, bad = t.forma !== 'rett' && occ > 0 && occ < mn;
-    const ctl = sel && !h.ro ? `<div class="sp-tc"><button data-spa="minus" data-t="${t.id}" title="Togli un posto">−</button><b>${t.seats.length}</b><button data-spa="plus" data-t="${t.id}" title="Aggiungi un posto">＋</button><button data-spa="forma" data-t="${t.id}" title="Cambia forma">${t.forma === 'rett' ? '◯ Tondo' : '▭ Rett.'}</button><button data-spa="name" data-t="${t.id}" title="Rinomina">✎</button><button data-spa="del" data-t="${t.id}" title="Elimina tavolo">🗑</button></div>` : '';
+    const ctl = sel && !h.ro && !h.fixed ? `<div class="sp-tc"><button data-spa="minus" data-t="${t.id}" title="Togli un posto">−</button><b>${t.seats.length}</b><button data-spa="plus" data-t="${t.id}" title="Aggiungi un posto">＋</button><button data-spa="forma" data-t="${t.id}" title="Cambia forma">${t.forma === 'rett' ? '◯ Tondo' : '▭ Rett.'}</button><button data-spa="name" data-t="${t.id}" title="Rinomina">✎</button><button data-spa="del" data-t="${t.id}" title="Elimina tavolo">🗑</button></div>` : '';
     return `<div class="sp-tbl ${sel ? 'sel' : ''}" data-tbl="${t.id}" style="left:${t.x}px;top:${t.y}px;width:${g.w}px"><div class="sp-th" data-tdrag="${t.id}" title="Trascina per spostare il tavolo"><b>${esc(label(t))}</b><span class="pill ${occ === t.seats.length ? 'ok' : ''}">${occ}/${t.seats.length}</span>${bad ? `<span class="pill warn" title="Un tavolo tondo prevede da ${mn} a ${mx} persone">min ${mn}</span>` : ''}</div>${ctl}
       <div class="sp-map" style="width:${g.w}px;height:${g.h}px"><div class="sp-tb" data-tdrag="${t.id}" style="left:${g.table.x}px;top:${g.table.y}px;width:${g.table.w}px;height:${g.table.h}px;border-radius:${g.table.round ? '50%' : '8px'}"><div>${t.num}<small>${t.forma === 'rett' ? 'rettangolare' : 'tondo'}</small></div></div>${t.seats.map((_, i) => seatHtml(h, t, i, g.pos[i])).join('')}${S.det ? t.seats.map((id, i) => labHtml(h, id, g.lab[i], g.pos[i])).join('') : ''}</div></div>`;
   }
@@ -152,8 +152,8 @@ const SeatPlan = (() => {
   function html(h) {
     ensurePos(h, true); const [w, ht] = roomSize(h);
     return `<div class="spw" id="sp-root"><aside class="sp-list noprint"><input type="text" id="sp-q" placeholder="🔍 Cerca invitato…" value="${esc(S.q)}" autocomplete="off"><div class="sp-tabs" id="sp-tabs">${tabsHtml(h)}</div><div class="sp-items" id="sp-items">${listHtml(h)}</div>
-      <p class="hint" style="margin:6px 2px 0">${h.ro ? 'Sola lettura.' : 'Trascina un invitato su un posto (o toccalo e poi tocca il posto). Trascina il tavolo dal suo titolo per spostarlo in sala. Trascina un invitato seduto su un altro posto per scambiarli, o qui per liberarlo.'}</p></aside>
-      <section class="sp-main"><div class="sp-bar noprint">${h.ro ? '' : `<button class="btn alt sm" data-spa="add" data-f="tondo">＋ Tavolo tondo <small>(8–12)</small></button><button class="btn alt sm" data-spa="add" data-f="rett">＋ Tavolo rettangolare</button><button class="btn sand sm" data-spa="auto">Assegna automaticamente</button><button class="btn alt sm" data-spa="reflow" title="Rimette in ordine i tavoli in sala">Riordina</button>`}<button class="btn alt sm" data-spa="det" title="Mostra o nasconde nomi ed esigenze accanto ai posti">${S.det ? '☑' : '☐'} Nomi ed esigenze</button>${h.print ? '<button class="btn alt sm" data-spa="print">🖨 Stampa</button>' : ''}<span class="sp-zoom" title="Zoom (anche Ctrl + rotellina)"><button data-spa="zout">−</button><b id="sp-zl">${Math.round(S.zoom * 100)}%</b><button data-spa="zin">＋</button><button data-spa="zfit">Adatta</button></span><span class="sp-stats" id="sp-stats">${statsHtml(h)}</span></div>
+      <p class="hint" style="margin:6px 2px 0">${h.ro ? 'Sola lettura.' : h.fixed ? 'Trascina un invitato su un posto (o toccalo e poi tocca il posto). Trascina un invitato seduto su un altro posto per scambiarli, o qui per liberarlo. I tavoli sono disposti da La Stella.' : 'Trascina un invitato su un posto (o toccalo e poi tocca il posto). Trascina il tavolo dal suo titolo per spostarlo in sala. Trascina un invitato seduto su un altro posto per scambiarli, o qui per liberarlo.'}</p></aside>
+      <section class="sp-main"><div class="sp-bar noprint">${h.ro || h.fixed ? '' : `<button class="btn alt sm" data-spa="add" data-f="tondo">＋ Tavolo tondo <small>(8–12)</small></button><button class="btn alt sm" data-spa="add" data-f="rett">＋ Tavolo rettangolare</button><button class="btn sand sm" data-spa="auto">Assegna automaticamente</button><button class="btn alt sm" data-spa="reflow" title="Rimette in ordine i tavoli in sala">Riordina</button>`}<button class="btn alt sm" data-spa="det" title="Mostra o nasconde nomi ed esigenze accanto ai posti">${S.det ? '☑' : '☐'} Nomi ed esigenze</button>${h.print ? '<button class="btn alt sm" data-spa="print">🖨 Stampa</button>' : ''}<span class="sp-zoom" title="Zoom (anche Ctrl + rotellina)"><button data-spa="zout">−</button><b id="sp-zl">${Math.round(S.zoom * 100)}%</b><button data-spa="zin">＋</button><button data-spa="zfit">Adatta</button></span><span class="sp-stats" id="sp-stats">${statsHtml(h)}</span></div>
       <div class="sp-canvas" id="sp-canvas"><div class="sp-zw" id="sp-zw" style="width:${w * S.zoom}px;height:${ht * S.zoom}px"><div class="sp-room" id="sp-room" style="width:${w}px;height:${ht}px;transform:scale(${S.zoom})">${roomHtml(h)}</div></div></div></section></div>`;
   }
   function refresh() {
@@ -177,7 +177,7 @@ const SeatPlan = (() => {
     if (a === 'print') { window.print(); return; }
     if (a === 'det') { S.det = !S.det; if (ensurePos(h, true) && h.change) h.change(); refresh(); return; }
     if (a === 'zin' || a === 'zout' || a === 'zfit') { setZoom(a === 'zin' ? S.zoom + .1 : a === 'zout' ? S.zoom - .1 : fitZoom(h)); return; }
-    if (h.ro) return;
+    if (h.ro || h.fixed) return;
     if (a === 'add') { addTable(h, b.dataset.f); commit(h); }
     else if (a === 'auto') { autoSeat(h); commit(h); }
     else if (a === 'reflow') { h.tables.forEach(t => { t.x = t.y = undefined; }); h.tables.slice().sort((x, y) => x.num - y.num).forEach(t => { Object.assign(t, findSpot(h.tables, size(t), t)); }); commit(h); }
@@ -195,7 +195,7 @@ const SeatPlan = (() => {
     drag = { x0: e.clientX, y0: e.clientY, on: false, id: e.pointerId };
     if (seat && !h.ro) Object.assign(drag, { kind: 'guest', gid: seat.dataset.g, src: seat });
     else if (chip && !h.ro) Object.assign(drag, { kind: 'guest', gid: chip.dataset.g, src: chip });
-    else if (th && !h.ro) { const t = h.tables.find(x => x.id === th.dataset.tdrag); Object.assign(drag, { kind: 'table', t, tx: t.x, ty: t.y, el: root.querySelector(`[data-tbl="${t.id}"]`) }); S.selT !== t.id && (S.selT = t.id); }
+    else if (th && !h.ro && !h.fixed) { const t = h.tables.find(x => x.id === th.dataset.tdrag); Object.assign(drag, { kind: 'table', t, tx: t.x, ty: t.y, el: root.querySelector(`[data-tbl="${t.id}"]`) }); S.selT !== t.id && (S.selT = t.id); }
     else drag.kind = emptySeat ? 'seatclick' : 'none';
     drag.emptySeat = emptySeat; drag.chip = chip; drag.seat = seat;
     document.addEventListener('pointermove', move); document.addEventListener('pointerup', up); document.addEventListener('pointercancel', cancel);
@@ -231,7 +231,7 @@ const SeatPlan = (() => {
       if (d.kind === 'guest') {
         const s = el && el.closest('.sp-seat'), tb = el && el.closest('.sp-tbl'), list = el && el.closest('.sp-list');
         if (s) place(h, d.gid, h.tables.find(x => x.id === s.dataset.t), +s.dataset.i);
-        else if (tb) { const t = h.tables.find(x => x.id === tb.dataset.tbl), i = firstFree(t); if (i < 0) { msg(h, `Tavolo completo: massimo ${lim(t)[1]} posti`); refresh(); return; } place(h, d.gid, t, i); }
+        else if (tb) { const t = h.tables.find(x => x.id === tb.dataset.tbl), i = firstFree(t, h); if (i < 0) { msg(h, `Tavolo completo: massimo ${lim(t)[1]} posti`); refresh(); return; } place(h, d.gid, t, i); }
         else if (list) unseat(h, d.gid);
         else { refresh(); return; }
         S.sel = null; commit(h);

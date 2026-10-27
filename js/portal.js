@@ -6,7 +6,7 @@ const ALLERGIE = [['glutine', 'Glutine'], ['crostacei', 'Crostacei'], ['uova', '
 const INTOLL = [['celiachia', 'Celiachia'], ['lattosio', 'Lattosio'], ['nichel', 'Nichel'], ['istamina', 'Istamina'], ['fruttosio', 'Fruttosio'], ['favismo', 'Favismo'], ['gravidanza', 'Gravidanza'], ['funghi', 'Funghi']];
 const DIETE = ['', 'Vegetariano', 'Vegano', 'Fruttariano', 'Pescetariano', 'Crudista', 'Halal', 'Kosher'];
 const TABS = [['home', 'Il tuo evento'], ['aperitivo', 'Aperitivo'], ['tavola', 'A tavola'], ['dolci', 'Dolci e vini'], ['allest', 'Allestimenti'], ['invitati', 'Invitati'], ['tavoli', 'Tavoli'], ['richieste', 'Richieste speciali'], ['fine', 'Note e conferma'], ['eco', 'Riepilogo economico']];
-let EV = null, D = null, tab = 'home', dirty = false, msg = '', saving = false;
+let EVRAW = '', EV = null, D = null, tab = 'home', dirty = false, msg = '', saving = false;
 
 const fmt = iso => iso ? new Date(iso + 'T12:00:00').toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }) : '—';
 
@@ -22,7 +22,13 @@ async function boot() {
   if (!TOKEN) { $('#app').innerHTML = '<div class="card"><h2>Link non valido</h2><p class="muted">Apri il link personale che ti ha inviato La Stella.</p></div>'; return; }
   const r = await call('GET');
   if (!r.ok) { $('#app').innerHTML = `<div class="card"><h2>Link non valido o scaduto</h2><p class="muted">${esc(r.body.error || 'Contatta La Stella per ricevere un nuovo link.')}</p></div>`; return; }
-  loadEv(r.body.event); draw();
+  EVRAW = JSON.stringify(r.body.event); loadEv(r.body.event); draw(); setInterval(poll, 10000);
+}
+/* le modifiche dello staff (es. disposizione dei tavoli) arrivano al cliente senza ricaricare, se non sta modificando */
+async function poll() {
+  if (dirty || saving || document.hidden || document.body.classList.contains('sp-dragging')) return;
+  const r = await call('GET'); if (!r.ok) return; const raw = JSON.stringify(r.body.event); if (raw === EVRAW) return;
+  EVRAW = raw; loadEv(r.body.event); if (tab === 'tavoli' && document.getElementById('sp-root')) SeatPlan.refresh(); else draw();
 }
 
 const locked = k => EV.locks.all || EV.locks[k];
@@ -62,7 +68,7 @@ function view() {
     <h3>Vino bianco</h3>${C.vini.bianchi.map(v => radio('menu.bianco', v, v, '', 'menu')).join('')}<h3>Vino rosso</h3>${C.vini.rossi.map(v => radio('menu.rosso', v, v, '', 'menu')).join('')}`;
   if (tab === 'allest') return `<h2>Allestimenti</h2>${lockNote('allest')}${C.allestimenti.map(g => `<h3>${esc(g.gruppo)}</h3>${g.voci.map(v => v.fisso ? `<div class="card"><b>${esc(v.nome)}</b> <span class="pill ok">incluso</span><div class="muted small">${esc(v.info)}</div></div>` : allestVoce(v)).join('')}`).join('')}`;
   if (tab === 'invitati') return guestsView();
-  if (tab === 'tavoli') return `<h2>Tavoli</h2>${lockNote('guests')}<p class="muted">Create i tavoli e sistemate gli invitati: trascinate un invitato su un posto e trascinate il tavolo dal titolo per spostarlo in sala. Tavolo tondo da 8 a 12 persone, rettangolare senza limiti. La disposizione sarà rifinita insieme al nostro staff.</p>${SeatPlan.html(SeatPlan.host())}`;
+  if (tab === 'tavoli') return `<h2>Tavoli</h2>${lockNote('guests')}<p class="muted">La disposizione dei tavoli in sala è definita da La Stella: voi scegliete <b>chi si siede e dove</b>. Trascinate un invitato su un posto (o toccatelo e poi toccate il posto); trascinate un invitato seduto su un altro posto per scambiarlo, oppure sull'elenco per liberarlo.</p>${SeatPlan.html(SeatPlan.host())}`;
   if (tab === 'richieste') return `<h2>Richieste speciali</h2>${lockNote('all')}<p class="muted">Un piatto fuori menù, un'isola personalizzata, una variante per allergie o diete particolari: descrivetela e il nostro chef vi risponderà con fattibilità e costo.</p>
     ${D.special.map((s, i) => `<div class="card"><div class="row"><select data-sp="${i}" data-f="kind" style="max-width:260px" ${dis('all')}>${[['piatto', 'Piatto personalizzato'], ['isola', 'Isola personalizzata'], ['dieta', 'Variante dietetica / allergeni'], ['altro', 'Altro']].map(([k, l]) => `<option value="${k}" ${s.kind === k ? 'selected' : ''}>${l}</option>`).join('')}</select>${s.stato ? `<span class="pill ${s.stato === 'Approvato' ? 'ok' : 'warn'}">${esc(s.stato)}</span>` : ''}<button class="btn alt sm" data-spdel="${i}" ${dis('all')}>Elimina</button></div>
       <div style="margin-top:8px"><input type="text" data-sp="${i}" data-f="titolo" placeholder="Titolo (es. Torta senza glutine)" value="${esc(s.titolo)}" ${dis('all')}></div><div style="margin-top:8px"><textarea data-sp="${i}" data-f="descr" placeholder="Descrizione" ${dis('all')}>${esc(s.descr)}</textarea></div></div>`).join('') || '<div class="muted">Nessuna richiesta.</div>'}
@@ -124,7 +130,7 @@ async function savePortal(extra = {}) {
   const body = { menu: D.menu, allest: D.allest, guests: D.guests, tables: D.tables, special: D.special, nota: D.nota, ...extra };
   const r = await call('PUT', body); saving = false;
   if (!r.ok) { msg = r.body.error || 'Errore, riprova'; draw(); return; }
-  const keep = tab; loadEv(r.body.event); tab = keep;
+  const keep = tab; EVRAW = JSON.stringify(r.body.event); loadEv(r.body.event); tab = keep;
   msg = r.body.denied && r.body.denied.length ? 'Alcune parti sono chiuse e non sono state salvate: ' + r.body.denied.join(', ') : '✓ Salvato';
   draw();
 }
@@ -192,5 +198,5 @@ document.addEventListener('change', async e => {
 /* ---- tavoli: stesso componente del gestionale ---- */
 function syncSeats() { const ids = new Set(D.guests.map(g => g.id)); D.tables.forEach(t => { t.seats = t.seats.map(x => (ids.has(x) ? x : null)); }); }
 function toastP(m) { const d = document.createElement('div'); d.textContent = m; d.style.cssText = 'position:fixed;left:50%;bottom:90px;transform:translateX(-50%);background:#2e3540;color:#fff;padding:10px 16px;border-radius:8px;z-index:9999;font-size:14px;max-width:90vw;text-align:center'; document.body.appendChild(d); setTimeout(() => d.remove(), 3200); }
-SeatPlan.host = () => (EV && D && tab === 'tavoli' ? { guests: D.guests, tables: D.tables, change() { dirty = true; msg = ''; updBar(); }, ro: locked('guests'), toast: toastP, newId: uid } : null);
+SeatPlan.host = () => (EV && D && tab === 'tavoli' ? { fixed: true, guests: D.guests, tables: D.tables, change() { dirty = true; msg = ''; updBar(); }, ro: locked('guests'), toast: toastP, newId: uid } : null);
 boot();
