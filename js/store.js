@@ -262,7 +262,7 @@ function buildScadenziario(E, total) {
 function syncPagamenti(E) {
   if (!E.pagAuto) return false;
   const nw = buildScadenziario(E, computeQuote(E).imponibile);
-  nw.forEach((x, i) => { if (E.pagamenti[i] && E.pagamenti[i].paid) x.paid = true; });
+  nw.forEach((x, i) => { const o = E.pagamenti[i]; if (o && o.paid) Object.assign(x, { paid: true }, ...['paidAt', 'paidAmt', 'paidMethod', 'paidNote'].filter(k => o[k] !== undefined).map(k => ({ [k]: o[k] }))); });
   if (JSON.stringify(nw) === JSON.stringify(E.pagamenti)) return false;
   E.pagamenti = nw; return true;
 }

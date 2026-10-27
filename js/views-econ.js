@@ -73,7 +73,31 @@ VIEWS.economics = E => {
     <div class="card" style="margin-top:16px"><div class="chead"><h4>Stato della pratica</h4><span class="pill right ${c.pct === 100 ? 'ok' : 'warn'}">${c.pct}%</span></div><div style="margin-top:8px">${c.items.map(i => `<div class="small" style="padding:2px 0;color:${i.ok ? 'var(--ok)' : 'var(--muted)'}">${i.ok ? '✓' : '○'} ${esc(i.label)}</div>`).join('')}</div></div>
     <div class="row" style="margin-top:16px"><button class="btn" onclick="document.body.classList.add('printing-quote');window.print();setTimeout(()=>document.body.classList.remove('printing-quote'),500)">🖨 Stampa / PDF</button><button class="btn alt" data-act="export-quote">⭳ Excel</button></div></div>`;
   return `<div class="secthead noprint"><div><h2>Economics</h2><p>Riepilogo di quanto scelto e detto, valorizzato con il listino. Il preventivo si aggiorna in tempo reale a ogni modifica di ospiti, allestimenti, add-on e richieste speciali.</p></div></div>
-  <div class="econ-grid">${doc}${side}</div>${pagamentiHtml(E, q)}`;
+  ${accontiHtml(E, q)}<div class="econ-grid">${doc}${side}</div>${pagamentiHtml(E, q)}`;
+};
+/* acconti versati: qui si spunta ciò che il cliente ha già pagato (data, importo effettivo, modalità) */
+const PAY_METHODS = ['Bonifico', 'Contanti', 'Assegno', 'Carta / POS', 'Altro'];
+const grossOf = x => Math.round((Number(x.importo) || 0) * (1 + S.settings.iva / 100) * 100) / 100;
+const paidOf = x => (x.paid ? (x.paidAmt !== undefined && x.paidAmt !== '' ? Number(x.paidAmt) || 0 : grossOf(x)) : 0);
+function accontiHtml(E, q) {
+  const P = E.pagamenti, versato = P.reduce((a, x) => a + paidOf(x), 0), tot = q.totale, residuo = Math.max(0, tot - versato), pct = tot ? Math.min(100, Math.round(versato / tot * 100)) : 0, n = P.filter(x => x.paid).length;
+  const rows = P.map((x, i) => {
+    const late = !x.paid && x.due && new Date(x.due + 'T23:59:59') < new Date();
+    return `<div class="avoce ${x.paid ? 'done' : ''}" style="margin-bottom:8px"><div class="row" style="gap:12px;align-items:center;flex-wrap:wrap">
+      <label class="row" style="gap:8px;flex:2;min-width:220px;cursor:pointer"><input type="checkbox" style="width:20px;height:20px" data-b="pagamenti.${i}.paid" data-hook="paytick" data-i="${i}" data-r ${x.paid ? 'checked' : ''}><span><b>${esc(x.desc || 'Rata ' + (i + 1))}</b><div class="hint">scadenza ${x.due ? new Date(x.due + 'T12:00:00').toLocaleDateString('it-IT') : '—'}${late ? ' <span class="pill bad">scaduta</span>' : ''}</div></span></label>
+      <div style="min-width:120px"><div class="lbl2">Dovuto (iva incl.)</div><b>${eur(grossOf(x))}</b></div>
+      ${x.paid ? `<div class="field" style="min-width:140px"><label>Data versamento</label><input type="date" data-b="pagamenti.${i}.paidAt" value="${esc(x.paidAt || '')}"></div>
+        <div class="field" style="min-width:130px"><label>Importo versato (iva incl.)</label><input type="number" step="0.01" data-b="pagamenti.${i}.paidAmt" data-r value="${x.paidAmt === undefined ? '' : x.paidAmt}" placeholder="${grossOf(x)}"></div>
+        <div class="field" style="min-width:130px"><label>Modalità</label><select data-b="pagamenti.${i}.paidMethod"><option value="">—</option>${PAY_METHODS.map(m => `<option ${x.paidMethod === m ? 'selected' : ''}>${m}</option>`).join('')}</select></div>
+        <div class="field" style="flex:1;min-width:140px"><label>Nota</label><input type="text" data-b="pagamenti.${i}.paidNote" value="${esc(x.paidNote || '')}" placeholder="es. CRO, assegno n."></div>` : ''}</div></div>`;
+  }).join('');
+  return `<div class="card noprint" style="margin-bottom:16px"><div class="chead"><h3>Acconti versati</h3><span class="muted small">spunta le rate che il cliente ha già pagato</span></div>
+    <div class="row" style="gap:10px;margin:8px 0 12px"><span class="pill ok">Versato ${eur(versato)}</span><span class="pill ${residuo ? 'warn' : 'ok'}">Residuo ${eur(residuo)}</span><span class="pill">Totale preventivo ${eur(tot)} iva incl.</span><span class="muted small">${n}/${P.length} rate versate</span><div class="progress grow" style="min-width:120px"><i style="width:${pct}%"></i></div><b>${pct}%</b></div>
+    ${P.length ? rows : '<p class="muted">Nessuna rata: scegli la data dell\'evento nel Questionario per generare lo scadenziario.</p>'}</div>`;
+}
+HOOKS.paytick = el => {
+  const x = curEvent().pagamenti[+el.dataset.i]; if (!x) return;
+  if (el.checked) { x.paidAt = x.paidAt || isoOf(new Date()); } else { ['paidAt', 'paidAmt', 'paidMethod', 'paidNote'].forEach(k => delete x[k]); }
 };
 function pagamentiHtml(E, q) {
   const P = E.pagamenti, iva = S.settings.iva / 100, tot = P.reduce((a, x) => a + (Number(x.importo) || 0), 0), paid = P.filter(x => x.paid).reduce((a, x) => a + (Number(x.importo) || 0), 0);
@@ -81,8 +105,8 @@ function pagamentiHtml(E, q) {
   return `<div class="card noprint" style="margin-top:18px"><div class="chead"><h3>Scadenziario pagamenti</h3><span class="muted small">importi oltre IVA ${S.settings.iva}%</span>
     ${E.pagAuto ? '<span class="pill ok">automatico dalla data dell\'evento</span>' : '<span class="pill warn">modificato a mano</span> <button class="btn sm alt" data-act="pay-auto">Ricalcola automaticamente</button>'}<button class="btn sm alt right" data-act="pay-add">＋ Rata</button></div>
     ${!E.q.data ? '<div class="alert" style="margin:10px 0">Scegli la data dell\'evento nel Questionario per calcolare le scadenze.</div>' : ''}
-    ${P.length ? `<table class="tb"><thead><tr><th style="width:44px">Pagato</th><th>Descrizione</th><th>Scadenza</th><th class="num">Importo (iva escl.)</th><th class="num">Iva incl.</th><th></th></tr></thead><tbody>
-    ${P.map((x, i) => { const late = !x.paid && x.due && new Date(x.due + 'T23:59:59') < new Date(); return `<tr><td><input type="checkbox" data-b="pagamenti.${i}.paid" data-r ${x.paid ? 'checked' : ''}></td><td><input type="text" data-b="pagamenti.${i}.desc" data-hook="paymanual" value="${esc(x.desc)}"></td>
+    ${P.length ? `<table class="tb"><thead><tr><th style="width:90px">Stato</th><th>Descrizione</th><th>Scadenza</th><th class="num">Importo (iva escl.)</th><th class="num">Iva incl.</th><th></th></tr></thead><tbody>
+    ${P.map((x, i) => { const late = !x.paid && x.due && new Date(x.due + 'T23:59:59') < new Date(); return `<tr><td>${x.paid ? '<span class="pill ok">versato</span>' : '<span class="pill">da versare</span>'}</td><td><input type="text" data-b="pagamenti.${i}.desc" data-hook="paymanual" value="${esc(x.desc)}"></td>
       <td><input type="date" style="width:auto" data-b="pagamenti.${i}.due" data-hook="paymanual" data-r value="${esc(x.due)}">${late ? ' <span class="pill bad">scaduta</span>' : ''}</td><td class="num"><input type="number" style="width:110px" data-b="pagamenti.${i}.importo" data-hook="paymanual" data-r value="${x.importo}"></td><td class="num">${eur((Number(x.importo) || 0) * (1 + iva))}</td><td><button class="btn ghost sm" data-act="pay-del" data-i="${i}">✕</button></td></tr>`; }).join('')}</tbody>
     <tfoot><tr><td></td><td>Totale rate</td><td></td><td class="num">${eur(tot)}</td><td class="num">${eur(tot * (1 + iva))}</td><td></td></tr></tfoot></table>
     <div class="row" style="margin-top:10px"><span class="pill ok">Incassato ${eur(paid)}</span><span class="pill ${Math.abs(diff) < 0.5 ? 'ok' : 'warn'}">${Math.abs(diff) < 0.5 ? 'Rate = preventivo' : (diff > 0 ? 'Da pianificare ' + eur(diff) : 'Rate oltre il preventivo di ' + eur(-diff)) + ' (iva escl.)'}</span><span class="pill">Residuo da incassare ${eur(q.imponibile - paid)} iva escl.</span></div>`
