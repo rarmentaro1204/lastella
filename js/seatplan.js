@@ -64,12 +64,12 @@ const SeatPlan = (() => {
     for (let y = 16; y < 4000; y += 20) for (let x = 16; x <= 1500 - s.w; x += 20) if (!others.some(o => hit({ x, y, ...s }, o))) return { x, y };
     return { x: 16, y: 16 };
   }
-  /* posiziona i tavoli senza coordinate e sposta quelli che si sovrappongono ad altri */
+  /* posiziona i tavoli senza coordinate e sposta solo quelli praticamente impilati (centri a meno di 90px) */
   function ensurePos(h, resolve) {
     let ch = false; const placed = [], bad = t => !Number.isFinite(t.x) || !Number.isFinite(t.y);
     h.tables.slice().sort((a, b) => (bad(a) - bad(b)) || (a.num - b.num)).forEach(t => {
       const sz = size(t);
-      if (bad(t) || (resolve && placed.some(o => hit({ x: t.x, y: t.y, ...sz }, o)))) { Object.assign(t, findSpot(placed.map(o => o.t), sz, t)); ch = true; }
+      if (bad(t) || (resolve && placed.some(o => Math.hypot(t.x + sz.w / 2 - (o.x + o.w / 2), t.y + sz.h / 2 - (o.y + o.h / 2)) < 90))) { Object.assign(t, findSpot(placed.map(o => o.t), sz, t)); ch = true; }
       placed.push({ x: t.x, y: t.y, ...sz, t });
     });
     return ch;
@@ -128,9 +128,9 @@ const SeatPlan = (() => {
     return `<div class="sp-lab" style="left:${l[0]}px;top:${l[1]}px;width:${LW}px;min-height:${LH}px"><b>${esc(g.nome || "")}</b><br>${esc(g.cognome || "")}<div class="fls">${flagHtml(flagsOf(g), 8)}</div></div>`;
   }
   function tableHtml(h, t) {
-    const g = geometry(t), occ = occOf(t), [mn, mx] = lim(t), sel = S.selT === t.id, bad = t.forma !== 'rett' && occ > 0 && occ < mn;
+    const g = geometry(t), gd = geometry(t, true), ox = Math.round((gd.table.x + gd.table.w / 2) - (g.table.x + g.table.w / 2)), oy = Math.round((gd.table.y + gd.table.h / 2) - (g.table.y + g.table.h / 2)), occ = occOf(t), [mn, mx] = lim(t), sel = S.selT === t.id, bad = t.forma !== 'rett' && occ > 0 && occ < mn;
     const ctl = sel && !h.ro && !h.fixed ? `<div class="sp-tc"><button data-spa="minus" data-t="${t.id}" title="Togli un posto">−</button><b>${t.seats.length}</b><button data-spa="plus" data-t="${t.id}" title="Aggiungi un posto">＋</button><button data-spa="forma" data-t="${t.id}" title="Cambia forma">${t.forma === 'rett' ? '◯ Tondo' : '▭ Rett.'}</button><button data-spa="name" data-t="${t.id}" title="Rinomina">✎</button><button data-spa="del" data-t="${t.id}" title="Elimina tavolo">🗑</button></div>` : '';
-    return `<div class="sp-tbl ${sel ? 'sel' : ''}" data-tbl="${t.id}" style="left:${t.x}px;top:${t.y}px;width:${g.w}px"><div class="sp-th" data-tdrag="${t.id}" title="Trascina per spostare il tavolo"><b>${esc(label(t))}</b><span class="pill ${occ === t.seats.length ? 'ok' : ''}">${occ}/${t.seats.length}</span>${bad ? `<span class="pill warn" title="Un tavolo tondo prevede da ${mn} a ${mx} persone">min ${mn}</span>` : ''}</div>${ctl}
+    return `<div class="sp-tbl ${sel ? 'sel' : ''}" data-tbl="${t.id}" data-ox="${ox}" data-oy="${oy}" style="left:${t.x + ox}px;top:${t.y + oy}px;width:${g.w}px"><div class="sp-th" data-tdrag="${t.id}" title="Trascina per spostare il tavolo"><b>${esc(label(t))}</b><span class="pill ${occ === t.seats.length ? 'ok' : ''}">${occ}/${t.seats.length}</span>${bad ? `<span class="pill warn" title="Un tavolo tondo prevede da ${mn} a ${mx} persone">min ${mn}</span>` : ''}</div>${ctl}
       <div class="sp-map" style="width:${g.w}px;height:${g.h}px"><div class="sp-tb" data-tdrag="${t.id}" style="left:${g.table.x}px;top:${g.table.y}px;width:${g.table.w}px;height:${g.table.h}px;border-radius:${g.table.round ? '50%' : '8px'}"><div>${t.num}<small>${t.forma === 'rett' ? 'rettangolare' : 'tondo'}</small></div></div>${t.seats.map((_, i) => seatHtml(h, t, i, g.pos[i])).join('')}${S.det ? t.seats.map((id, i) => labHtml(h, id, g.lab[i], g.pos[i])).join('') : ''}</div></div>`;
   }
   function roomSize(h) { let w = 1200, ht = 640; h.tables.forEach(t => { const s = size(t); w = Math.max(w, t.x + s.w + 40); ht = Math.max(ht, t.y + s.h + 40); }); return [w, ht]; }
@@ -178,7 +178,7 @@ const SeatPlan = (() => {
     const t = h.tables.find(x => x.id === b.dataset.t), a = b.dataset.spa;
     if (a === 'tab') { S.tab = b.dataset.v; refresh(); return; }
     if (a === 'print') { window.print(); return; }
-    if (a === 'det') { S.det = !S.det; if (ensurePos(h, true) && h.change) h.change(); refresh(); return; }
+    if (a === 'det') { S.det = !S.det; refresh(); return; }       // solo visualizzazione: le posizioni non cambiano
     if (a === 'zin' || a === 'zout' || a === 'zfit') { S.auto = a === 'zfit'; setZoom(a === 'zin' ? S.zoom + .1 : a === 'zout' ? S.zoom - .1 : fitZoom(h)); return; }
     if (h.ro || h.fixed) return;
     if (a === 'add') { addTable(h, b.dataset.f); commit(h); }
@@ -221,7 +221,7 @@ const SeatPlan = (() => {
       (s || tb) && (s || tb).classList.add('over');
     } else if (drag.kind === 'table' && cv) {
       const r = cv.getBoundingClientRect(); if (e.clientX > r.right - 40) cv.scrollLeft += 18; else if (e.clientX < r.left + 40) cv.scrollLeft -= 18; if (e.clientY > r.bottom - 40) cv.scrollTop += 18; else if (e.clientY < r.top + 40) cv.scrollTop -= 18;
-      drag.nx = Math.max(0, Math.round(drag.tx + dx / S.zoom)); drag.ny = Math.max(0, Math.round(drag.ty + dy / S.zoom)); drag.el.style.left = drag.nx + 'px'; drag.el.style.top = drag.ny + 'px';
+      drag.nx = Math.max(0, Math.round(drag.tx + dx / S.zoom)); drag.ny = Math.max(0, Math.round(drag.ty + dy / S.zoom)); drag.el.style.left = drag.nx + (+drag.el.dataset.ox || 0) + 'px'; drag.el.style.top = drag.ny + (+drag.el.dataset.oy || 0) + 'px';
     }
   }
   function finish() { document.removeEventListener('pointermove', move); document.removeEventListener('pointerup', up); document.removeEventListener('pointercancel', cancel); document.body.classList.remove('sp-dragging'); document.querySelectorAll('.sp-seat.over,.sp-tbl.over,.lifted').forEach(x => x.classList.remove('over', 'lifted')); if (drag && drag.ghost) drag.ghost.remove(); drag = null; }
