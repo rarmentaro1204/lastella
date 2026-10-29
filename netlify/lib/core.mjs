@@ -1,6 +1,7 @@
 /* Backend del gestionale La Stella: utenti, eventi, impostazioni su un archivio chiave/valore.
    `stores` espone getStore(name) compatibile con @netlify/blobs (nei test è sostituito da una mappa in memoria). */
 import { newPortalToken, portalView, applyPortalEdit, kitchenEvent, kitchenSettings } from './portal.mjs';
+import { makeQuoteEngine } from './quote.mjs';
 import { createHmac, randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
 
 const ID_RE = /^[A-Za-z0-9_-]{3,64}$/;
@@ -22,7 +23,13 @@ function hashPw(password, salt = randomBytes(16).toString('hex')) { return { sal
 function checkPw(password, u) { const h = scryptSync(password, u.salt, 64); const b = Buffer.from(u.hash, 'hex'); return h.length === b.length && timingSafeEqual(h, b); }
 const publicUser = u => ({ email: u.email, role: u.role, approved: !!u.approved, created: u.created });
 
-export function createApi({ stores, secret, seed = null, now = () => new Date().toISOString() }) {
+/* file dell'app serviti solo dopo il login, nell'ordine di caricamento */
+const BUNDLE = ['catalog.js', 'store.js', 'app.js', 'sync.js', 'seatplan.js', 'views-evento.js', 'views-menu.js', 'views-econ.js', 'views-home.js', 'views-portale.js', 'views-servizio.js'];
+const PRIVATE_ASSETS = ['demo-seed.js'];
+const raw = (text, status = 200) => new Response(text, { status, headers: { 'content-type': 'application/javascript; charset=utf-8', 'cache-control': 'private, no-store', 'x-content-type-options': 'nosniff' } });
+
+export function createApi({ stores, secret, seed = null, assets = null, now = () => new Date().toISOString() }) {
+  const engine = assets ? makeQuoteEngine(assets) : null;
   const users = stores('users'), events = stores('events'), meta = stores('meta'), portal = stores('portal');
   const ROLES = ['admin', 'staff', 'cucina'], roleOf = (r, d = 'staff') => (ROLES.includes(r) ? r : d);
 
@@ -88,6 +95,10 @@ export function createApi({ stores, secret, seed = null, now = () => new Date().
       return out({ token: makeToken(secret, email), user: publicUser(u) });
     }
 
+    if (path === 'bundle-check' && method === 'GET') {
+      const files = Object.fromEntries([...BUNDLE, ...PRIVATE_ASSETS].map(n => [n, assets && assets.read(n) ? assets.read(n).length : 0]));
+      return out({ ok: Object.values(files).every(v => v > 0), files });
+    }
     let pm;
     if ((pm = path.match(/^portal\/([A-Za-z0-9_-]{20,80})$/)) && ['GET', 'PUT'].includes(method)) {
       const link = await portal.get(pm[1], { type: 'json' }); if (!link) return err(404, 'Link non valido o revocato.');
@@ -95,13 +106,13 @@ export function createApi({ stores, secret, seed = null, now = () => new Date().
       for (let i = 0; i < 5; i++) {
         const cur = await events.getWithMetadata(link.eventId, { type: 'json' }); if (!cur) return err(404, 'Evento non trovato.');
         if (cur.data.portale && cur.data.portale.token !== pm[1]) return err(404, 'Link non valido o revocato.');
-        if (method === 'GET') return out({ event: portalView(cur.data, await setts()) });
+        if (method === 'GET') return out({ event: portalView(cur.data, await setts(), engine) });
         const E = cur.data, at = now(), res = applyPortalEdit(E, body, at);
-        if (!res.changed.length) return out({ event: portalView(E, await setts()), denied: res.denied });
+        if (!res.changed.length) return out({ event: portalView(E, await setts(), engine), denied: res.denied });
         const rev = cur.metadata.rev + 1, r = await events.setJSON(link.eventId, E, { metadata: { rev, by: 'cliente', at }, onlyIfMatch: cur.etag });
         if (!r.modified) continue;
         await updateIndex(x => { x.events[link.eventId] = { rev, at, by: 'cliente' }; });
-        return out({ event: portalView(E, await setts()), denied: res.denied });
+        return out({ event: portalView(E, await setts(), engine), denied: res.denied });
       }
       return err(409, 'Riprova tra un istante.');
     }
@@ -116,6 +127,13 @@ export function createApi({ stores, secret, seed = null, now = () => new Date().
     }
     if (!me.approved) return err(403, 'Account in attesa di approvazione.', { pending: true });
     const admin = me.role === 'admin', cucina = me.role === 'cucina';
+    if (path === 'bundle' && method === 'GET') {
+      const parts = BUNDLE.map(n => assets && assets.read(n)); if (parts.some(p => !p)) return err(500, 'File dell\'app non disponibili sul server.');
+      return raw(parts.join('\n;\n'));
+    }
+    if (path.startsWith('asset/') && method === 'GET') {
+      const n = path.slice(6); const t = PRIVATE_ASSETS.includes(n) && assets && assets.read(n); return t ? raw(t) : err(404, 'Risorsa non trovata.');
+    }
 
     /* ---------- team ---------- */
     if (path === 'team' && method === 'GET') {

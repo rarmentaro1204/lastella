@@ -309,7 +309,11 @@ function demoGuests(E, r, pick) {
   seatable.forEach(g => { if (!t || t.seats.every(Boolean)) { t = newTable(E, 'tondo', 10); t.id = 't' + E.tables.length + E.id.slice(-2); t.nome = `Tavolo ${E.tables.length + 1}`; E.tables.push(t); } t.seats[t.seats.indexOf(null)] = g.id; });
 }
 /* carica i dati dimostrativi (dal file generato) se non già presenti */
-function loadScriptOnce(src) { return new Promise((res, rej) => { if (window.DEMO_SEED) return res(); const s = document.createElement('script'); s.src = src; s.onload = res; s.onerror = rej; document.head.appendChild(s); }); }
+function loadScriptOnce(src) {
+  if (window.DEMO_SEED) return Promise.resolve();
+  if (CLOUD) return fetch(CFG.api + '/asset/' + src.split('/').pop(), { headers: { authorization: 'Bearer ' + getToken() } }).then(r => { if (!r.ok) throw new Error('asset'); return r.text(); }).then(code => { const s = document.createElement('script'); s.textContent = code; document.head.appendChild(s); });
+  return new Promise((res, rej) => { const s = document.createElement('script'); s.src = src; s.onload = res; s.onerror = rej; document.head.appendChild(s); });
+}
 async function loadDemoSeed() {
   await loadScriptOnce('js/demo-seed.js'); const seed = window.DEMO_SEED; let n = 0;
   (seed.settings.locations || []).forEach(l => { if (!S.settings.locations.some(x => x.id === l.id)) S.settings.locations.push(clone(l)); });

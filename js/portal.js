@@ -1,5 +1,12 @@
 /* Portale cliente: pagina privata raggiunta dal link personale (#token). Nessun accesso ad altri dati del gestionale. */
 const $ = s => document.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const clone = o => JSON.parse(JSON.stringify(o));
+const uid = () => Math.random().toString(36).slice(2, 9) + Date.now().toString(36).slice(-3);
+const norm = s => String(s ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+const eur = n => (Number(n) || 0).toLocaleString('it-IT', { style: 'currency', currency: 'EUR' });
+/* icone di allergie, intolleranze e diete (usate anche dalla mappa dei tavoli) */
+const CAT = {"allergie":[{"k":"glutine","label":"Glutine (cereali)","icon":"🌾"},{"k":"crostacei","label":"Crostacei","icon":"🦐"},{"k":"uova","label":"Uova","icon":"🥚"},{"k":"pesce","label":"Pesce","icon":"🐟"},{"k":"arachidi","label":"Arachidi","icon":"🥜"},{"k":"soia","label":"Soia","icon":"🫘"},{"k":"latte","label":"Latte e derivati","icon":"🥛"},{"k":"guscio","label":"Frutta a guscio","icon":"🌰"},{"k":"sedano","label":"Sedano","icon":"🥬"},{"k":"senape","label":"Senape","icon":"🟡"},{"k":"sesamo","label":"Sesamo","icon":"⚪"},{"k":"solfiti","label":"Solfiti","icon":"🍷"},{"k":"lupini","label":"Lupini","icon":"🌼"},{"k":"molluschi","label":"Molluschi","icon":"🐚"}],"intolleranze":[{"k":"celiachia","label":"Celiachia","icon":"🚫🌾"},{"k":"lattosio","label":"Lattosio","icon":"🥛"},{"k":"nichel","label":"Nichel","icon":"⚙️"},{"k":"istamina","label":"Istamina","icon":"🧪"},{"k":"fruttosio","label":"Fruttosio","icon":"🍯"},{"k":"favismo","label":"Favismo","icon":"🫛"},{"k":"gravidanza","label":"Gravidanza","icon":"🤰"},{"k":"funghi","label":"Funghi","icon":"🍄"}],"diete":[{"k":"Vegetariano","label":"Vegetariano","icon":"🥕"},{"k":"Vegano","label":"Vegano","icon":"🌱"},{"k":"Fruttariano","label":"Fruttariano","icon":"🍎"},{"k":"Pescetariano","label":"Pescetariano","icon":"🐠"},{"k":"Crudista","label":"Crudista","icon":"🥗"},{"k":"Halal","label":"Halal","icon":"☪️"},{"k":"Kosher","label":"Kosher","icon":"✡️"}]};
 const TOKEN = (location.hash.replace(/^#\/?/, '') || new URLSearchParams(location.search).get('t') || '').trim();
 const API = '/api/portal/' + encodeURIComponent(TOKEN);
 const ALLERGIE = [['glutine', 'Glutine'], ['crostacei', 'Crostacei'], ['uova', 'Uova'], ['pesce', 'Pesce'], ['arachidi', 'Arachidi'], ['soia', 'Soia'], ['latte', 'Latte'], ['guscio', 'Frutta a guscio'], ['sedano', 'Sedano'], ['senape', 'Senape'], ['sesamo', 'Sesamo'], ['solfiti', 'Solfiti'], ['lupini', 'Lupini'], ['molluschi', 'Molluschi']];
@@ -79,21 +86,14 @@ function view() {
       : `<div class="alert"><b>Attenzione:</b> dopo la conferma <b>non sarà più possibile modificare</b> le scelte (menù, allestimenti, invitati, richieste). Per eventuali cambiamenti dovrete contattare direttamente La Stella, che valuterà la fattibilità.</div><p class="muted">Quando avete deciso tutto premete «Conferma definitivamente»: lo staff riceve l'avviso e procede con l'organizzazione.</p><button class="btn" data-confirm ${dis('all')}>Conferma definitivamente</button>`}</div>`;
 }
 function ecoView() {
-  const pr = EV.pricing; if (!pr) return '<div class="card">Riepilogo non disponibile.</div>';
-  let Q, plan;
-  try {
-    S.settings = hydrateSettings(pr.settings);
-    const E = hydrate({ q: pr.event.q, allest: D.allest, addons: pr.event.addons, special: pr.event.special, econ: pr.event.econ, pagAuto: pr.event.pagAuto });
-    Q = computeQuote(E);
-    plan = pr.event.pagAuto ? buildScadenziario(E, Q.imponibile).map((p, i) => ({ ...p, paid: !!(pr.event.pagamenti[i] && pr.event.pagamenti[i].paid) })) : (() => { const P = pr.event.pagamenti.map(p => ({ ...p })); fixSaldo(P, Q.imponibile); return P; })();
-  } catch (err) { return '<div class="card">Non è stato possibile calcolare il riepilogo: contattate La Stella.</div>'; }
-  const iva = S.settings.iva, secs = [...new Set(Q.lines.map(l => l.sec))];
+  const Q = EV.economics; if (!Q) return '<div class="card">Riepilogo non disponibile: contattate La Stella.</div>';
+  const secs = [...new Set(Q.lines.map(l => l.sec))];
   return `<h2>Riepilogo economico</h2>${dirty ? '<div class="alert">Avete modifiche non salvate: salvatele per aggiornare il riepilogo.</div>' : ''}
-  <p class="muted">Preventivo aggiornato in base alle vostre scelte. È indicativo: le voci «da valutare» o a quotazione dedicata saranno confermate da La Stella.</p>
+  <p class="muted">Preventivo aggiornato in base alle scelte salvate. È indicativo: le voci «da valutare» o a quotazione dedicata saranno confermate da La Stella.</p>
   ${secs.map(sec => `<h3>${esc(sec)}</h3><div class="card"><table>${Q.lines.filter(l => l.sec === sec).map(l => `<tr><td>${esc(l.label)}${l.qty > 1 ? `<div class="muted small">${l.qty} × ${eur(l.unit)}</div>` : ''}</td><td style="text-align:right;white-space:nowrap"><b>${eur(l.tot)}</b></td></tr>`).join('')}</table></div>`).join('')}
-  <div class="card"><table><tr><td>Imponibile</td><td style="text-align:right">${eur(Q.imponibile)}</td></tr><tr><td>IVA ${iva}%</td><td style="text-align:right">${eur(Q.iva)}</td></tr><tr><td><b>Totale (IVA inclusa)</b></td><td style="text-align:right;font-size:20px"><b>${eur(Q.totale)}</b></td></tr></table></div>
-  ${Q.infos.length ? Q.infos.map(i => `<div class="alert ok">${esc(i)}</div>`).join('') : ''}
-  ${plan && plan.length ? `<h3>Scadenze di pagamento</h3><div class="card"><table><tr><th>Quando</th><th>Descrizione</th><th style="text-align:right">Importo IVA incl.</th></tr>${plan.map(p => `<tr><td style="white-space:nowrap">${p.due ? esc(new Date(p.due + 'T12:00:00').toLocaleDateString('it-IT')) : '—'}</td><td>${esc(p.desc)}${p.paid ? ' <span class="pill ok">pagato</span>' : ''}</td><td style="text-align:right;white-space:nowrap">${eur(p.importo * (1 + iva / 100))}</td></tr>`).join('')}</table></div>` : ''}`;
+  <div class="card"><table><tr><td>Imponibile</td><td style="text-align:right">${eur(Q.imponibile)}</td></tr><tr><td>IVA ${Q.iva}%</td><td style="text-align:right">${eur(Q.ivaImporto)}</td></tr><tr><td><b>Totale (IVA inclusa)</b></td><td style="text-align:right;font-size:20px"><b>${eur(Q.totale)}</b></td></tr></table></div>
+  ${Q.infos.map(i => `<div class="alert ok">${esc(i)}</div>`).join('')}
+  ${Q.plan.length ? `<h3>Scadenze di pagamento</h3><div class="card"><table><tr><th>Quando</th><th>Descrizione</th><th style="text-align:right">Importo IVA incl.</th></tr>${Q.plan.map(p => `<tr><td style="white-space:nowrap">${p.due ? esc(new Date(p.due + 'T12:00:00').toLocaleDateString('it-IT')) : '—'}</td><td>${esc(p.desc)}${p.paid ? ' <span class="pill ok">pagato</span>' : ''}</td><td style="text-align:right;white-space:nowrap">${eur(p.lordo)}</td></tr>`).join('')}</table></div>` : ''}`;
 }
 function allestVoce(v) {
   const st = D.allest[v.id] || {}, sel = v.opts.find(o => o.id === st.opt), sur = o => (o.sur ? ` · +€${o.sur}/pers` : o.fix ? ` · €${o.fix}` : o.quota ? ' · su quotazione' : '');

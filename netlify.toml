@@ -1,6 +1,9 @@
 [build]
   publish = "."
 
+[functions]
+  included_files = ["js/*.js"]
+
 [[headers]]
   for = "/*"
   [headers.values]
