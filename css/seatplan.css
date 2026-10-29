@@ -54,3 +54,8 @@ body.sp-dragging { user-select: none; -webkit-user-select: none; cursor: grabbin
 .sp-zoom { display: inline-flex; align-items: center; gap: 4px; }
 .sp-zoom button { border: 1px solid var(--line, #ddd6cc); background: #fff; border-radius: 6px; padding: 3px 10px; font: inherit; cursor: pointer; }
 .sp-zoom b { min-width: 44px; text-align: center; font-size: 13px; }
+
+.pvg { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+.pvh { text-align: center; font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted, #78716a); padding: 4px 0; }
+.pvd { min-height: 78px; border: 1px solid var(--line, #ddd6cc); border-radius: 6px; padding: 4px 6px; background: #fff; cursor: pointer; font-size: 12px; overflow: hidden; }
+.pvd.off { background: transparent; border: 0; cursor: default; } .pvd.has { background: #f3f7ef; border-color: #b8cdb0; } .pvd.sel { outline: 2px solid var(--navy, #2e3540); } .pvd.today b { color: #b2412b; }

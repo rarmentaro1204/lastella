@@ -19,7 +19,7 @@ const stores = name => { const m = (mem[name] ||= new Map()); return {
 const seed = JSON.parse(readFileSync(join(root, 'netlify/lib/demo-seed.json'), 'utf8'));
 const api = createApi({ stores, secret: process.env.LASTELLA_SECRET || 'dev-secret', seed, assets: makeAssets([join(root, 'js')]) });
 /* come in produzione: il codice del gestionale non è servito come file statico */
-const BLOCKED = /^\/js\/(catalog|store|app|sync|demo-seed|views-[a-z]+)\.js$/;
+const BLOCKED = /^\/js\/(catalog|store|stdqty|app|sync|demo-seed|views-[a-z]+)\.js$/;
 const types = { '.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/javascript', '.css': 'text/css', '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', '.json': 'application/json' };
 
 http.createServer(async (req, res) => {

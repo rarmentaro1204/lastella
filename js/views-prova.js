@@ -71,3 +71,30 @@ ACTIONS['cm-save-lib'] = () => {
   const E = curEvent(), cu = E.custom, nome = prompt('Nome del modello (es. Cena aziendale classica):', cu.titolo || ''); if (!nome) return;
   (S.settings.customMenus = S.settings.customMenus || []).push({ id: uid(), nome, prezzo: cu.prezzo, sezioni: clone(cu.sezioni || []) }); save(); toast('Salvato nei modelli aziende (Catalogo → Menù aziende)'); rr();
 };
+
+/* ---------------------------------------------------------------- PROVE MENÙ · calendario e riepilogo di tutte le degustazioni */
+const PV = { y: new Date().getFullYear(), m: new Date().getMonth(), day: '' };
+const pvHas = E => E.stato !== 'Annullato' && E.prova && (E.prova.data || ['antipasti', 'entree', 'primi', 'secondi', 'vini'].some(k => (E.prova[k] || []).length));
+function pvNames(E) {
+  const C0 = catalogFor(E), IDX = recipeIndexOf(C0), p = E.prova, nm = id => (IDX[id] || {}).name || id;
+  const isl = id => { const i = C0.isole.find(x => x.items.some(r => r.id === id)); return i ? ` <span class="muted">(${esc(i.nome)})</span>` : ''; };
+  return [['Antipasti', p.antipasti.map(id => esc(nm(id)) + isl(id))], ['Entrée', p.entree.map(id => esc(nm(id)))], ['Primi', p.primi.map(id => esc(nm(id)))], ['Secondi', p.secondi.map(id => esc(nm(id)))], ['Vini', p.vini.map(esc)]];
+}
+function viewProve() {
+  const list = S.events.filter(pvHas).sort((a, b) => (a.prova.data || '9999').localeCompare(b.prova.data || '9999') || (a.prova.ora || '').localeCompare(b.prova.ora || ''));
+  const byDay = {}; list.forEach(E => { if (E.prova.data) (byDay[E.prova.data] = byDay[E.prova.data] || []).push(E); });
+  const first = new Date(PV.y, PV.m, 1), lead = (first.getDay() + 6) % 7, dim = new Date(PV.y, PV.m + 1, 0).getDate(), pad = n => String(n).padStart(2, '0');
+  const cells = []; for (let i = 0; i < lead; i++) cells.push('<div class="pvd off"></div>');
+  for (let d = 1; d <= dim; d++) { const iso = `${PV.y}-${pad(PV.m + 1)}-${pad(d)}`, n = (byDay[iso] || []).length; cells.push(`<div class="pvd ${n ? 'has' : ''} ${PV.day === iso ? 'sel' : ''} ${iso === isoOf(new Date()) ? 'today' : ''}" data-act="pv-day" data-d="${iso}"><b>${d}</b>${n ? `<span class="pill ok">${n}</span>` : ''}${(byDay[iso] || []).slice(0, 2).map(E => `<div class="small">${esc(E.prova.ora || '')} ${esc(evName(E).split(' & ')[0])}</div>`).join('')}</div>`); }
+  const shown = PV.day ? list.filter(E => E.prova.data === PV.day) : list;
+  const months = ['Gennaio', 'Febbraio', 'Marzo', 'Aprile', 'Maggio', 'Giugno', 'Luglio', 'Agosto', 'Settembre', 'Ottobre', 'Novembre', 'Dicembre'];
+  return `<div class="secthead"><div><h1>Prove menù</h1><p>Il calendario di tutte le degustazioni con le scelte fatte dai clienti. Clicca un giorno per filtrare l'elenco.</p></div></div>
+  <div class="card"><div class="row" style="margin-bottom:8px"><button class="btn sm alt" data-act="pv-nav" data-d="-1">‹</button><h3 style="min-width:160px;text-align:center">${months[PV.m]} ${PV.y}</h3><button class="btn sm alt" data-act="pv-nav" data-d="1">›</button><button class="btn sm alt" data-act="pv-nav" data-d="0">Oggi</button>${PV.day ? '<button class="btn sm right" data-act="pv-day" data-d="">Mostra tutte</button>' : ''}</div>
+    <div class="pvg">${['Lun', 'Mar', 'Mer', 'Gio', 'Ven', 'Sab', 'Dom'].map(x => `<div class="pvh">${x}</div>`).join('')}${cells.join('')}</div></div>
+  <div class="sp"></div><h3 style="margin-bottom:8px">${PV.day ? 'Prove del ' + esc(fmtDate(PV.day)) : 'Tutte le prove'} <span class="muted small">(${shown.length})</span></h3>
+  ${shown.map(E => { const p = E.prova; return `<div class="card" style="margin-bottom:12px"><div class="row"><h4 style="flex:1">${esc(evName(E))} <span class="muted small">· evento ${esc(E.q.data ? new Date(E.q.data + 'T12:00:00').toLocaleDateString('it-IT') : '—')}</span></h4>
+      <span class="pill ${p.data ? 'ok' : 'warn'}">${p.data ? esc(new Date(p.data + 'T12:00:00').toLocaleDateString('it-IT', { weekday: 'short', day: 'numeric', month: 'short' })) + (p.ora ? ' · ' + esc(p.ora) : '') : 'data da fissare'}</span><span class="pill">${p.persone || 2} persone</span><a class="btn sm alt" href="#/${'e/' + E.id + '/menu/prova'}">Apri</a></div>
+      <div class="grid g4" style="margin-top:8px">${pvNames(E).map(([t, a]) => `<div><div class="lbl2">${t} (${a.length})</div>${a.length ? a.map(x => `<div class="small" style="margin:2px 0">${x}</div>`).join('') : '<span class="muted small">—</span>'}</div>`).join('')}</div>${p.note ? `<p class="small muted" style="margin-top:6px">${esc(p.note)}</p>` : ''}</div>`; }).join('') || '<div class="empty">Nessuna prova menù ancora: si compilano da Menù → Prova menù, o dal portale cliente.</div>'}`;
+}
+ACTIONS['pv-nav'] = el => { const d = +el.dataset.d; if (!d) { PV.y = new Date().getFullYear(); PV.m = new Date().getMonth(); } else { PV.m += d; if (PV.m < 0) { PV.m = 11; PV.y--; } else if (PV.m > 11) { PV.m = 0; PV.y++; } } rr(); };
+ACTIONS['pv-day'] = el => { PV.day = PV.day === el.dataset.d ? '' : el.dataset.d; rr(); };

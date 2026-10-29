@@ -29,6 +29,7 @@ function parseHash() {
   if (typeof AUTH !== 'undefined' && AUTH.cucina && (h[0] === 'settings' || h[0] === 'catalog')) return { view: 'events' };
   if (h[0] === 'settings') return { view: 'settings', tab: h[1] || 'generale' };
   if (h[0] === 'catalog') return { view: 'catalog', year: +h[1] || new Date().getFullYear(), tab: h[2] || 'aperitivo' };
+  if (h[0] === 'prove') return { view: 'prove' };
   if (h[0] === 'ricettario') return { view: 'rlib', year: +h[1] || new Date().getFullYear() };
   if (h[0] === 'events') return { view: 'events' };
   if (typeof AUTH !== 'undefined' && AUTH.cucina) return { view: 'events' };
@@ -64,6 +65,7 @@ function render(top = true) {
     app.classList.add('noside'); $('#side').innerHTML = ''; $('#main').innerHTML = viewAuth(); document.title = 'Accesso · La Stella'; return;
   }
   app.classList.remove('noside');
+  if (typeof stdAutoApply === 'function') stdAutoApply();
   const E = curEvent();
   let html;
   if (ROUTE.view === 'home') html = viewDashboard();
@@ -71,6 +73,7 @@ function render(top = true) {
   else if (ROUTE.view === 'settings') html = viewSettings();
   else if (ROUTE.view === 'catalog') html = viewCatalog();
   else if (ROUTE.view === 'rlib') html = viewRicettarioLib();
+  else if (ROUTE.view === 'prove') html = viewProve();
   else html = eventShell(E);
   $('#side').innerHTML = sideHtml(E);
   $('#main').innerHTML = html;
@@ -88,7 +91,7 @@ function sideHtml(E) {
     nav += `<div class="sep"></div><div class="lbl">${esc(evName(E))}</div>`;
     SECS.forEach(s => { const locked = lock && s.k !== 'evento'; nav += `<a href="#/${evUrl(s.k, s.subs ? s.subs[0][0] : '')}" class="${ROUTE.sec === s.k ? 'on' : ''} ${locked ? 'locked' : ''}" ${locked ? 'title="Compila prima i dati del committente 1"' : ''}><em>${s.n}</em>${s.t}${locked ? ' 🔒' : ''}</a>`; });
   }
-  nav += `<div class="sep"></div><a href="#/ricettario" class="${on('rlib')}"><em>🍳</em>Libreria ricette</a>`;
+  nav += `<div class="sep"></div><a href="#/prove" class="${on('prove')}"><em>🍷</em>Prove menù</a><a href="#/ricettario" class="${on('rlib')}"><em>🍳</em>Libreria ricette</a>`;
   if (!AUTH.cucina) nav += `<a href="#/catalog/${new Date().getFullYear()}/aperitivo" class="${on('catalog')}"><em>✦</em>Catalogo menù</a><a href="#/settings" class="${on('settings')}"><em>⚙</em>Impostazioni</a>`;
   return `<a class="wordmark" href="#/home"><b>LA STELLA</b><i>NEW CONCEPT BANQUETING</i></a><nav class="nav">${nav}</nav>
   <div class="foot"><div id="sync-ind">${syncHtml()}</div>${CLOUD && AUTH.user ? `<div style="margin-top:6px;word-break:break-all">${esc(AUTH.user.email)}</div>` : '<div style="margin-top:6px">Esegui un backup dalle Impostazioni.</div>'}</div>`;

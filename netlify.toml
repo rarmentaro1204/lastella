@@ -89,6 +89,11 @@
   status = 404
   force = true
 [[redirects]]
+  from = "/js/stdqty.js"
+  to = "/404.html"
+  status = 404
+  force = true
+[[redirects]]
   from = "/js/views-prova.js"
   to = "/404.html"
   status = 404

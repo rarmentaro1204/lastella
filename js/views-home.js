@@ -173,7 +173,7 @@ function recEditor(base, arr, i, r, noActions) {
     <div class="fields" style="margin-top:12px">${tin('Nome del piatto', `${path}.name`, r.name, { w2: 1 })}${tin('Etichette (vegano, vegetariano…)', `${path}.tags`, (r.tags || []).join(', '), { ph: 'separate da virgola' }).replace('data-s data-b', 'data-csv data-s data-b')}
       <div class="field wide"><label>Descrizione (come appare nel menù)</label><input type="text" ${sb(`${path}.desc`)} value="${esc(r.desc || '')}"></div></div>
     <div class="grid g3" style="margin-top:8px">${tarea('Materie prime (una per riga: Nome | quantità a persona | unità | scarto %)', `${path}.ing`, r.ing)}${tarea('Semilavorati (una per riga)', `${path}.semi`, r.semi)}${tarea('Composizione del piatto (una per riga)', `${path}.asm`, r.asm)}</div>
-    <div style="margin-top:8px">${tarea('Procedimento e note di cucina (visibili allo staff nel ricettario)', `${path}.proc`, r.proc || '', 'text', { wide: 1 })}</div></details>`;
+    <div class="grid g2" style="margin-top:8px">${tarea('Lavorazioni / procedimento (una fase per riga)', `${path}.proc`, r.proc || '', 'text', { wide: 1 })}${tarea('Alternative per esigenze (una per riga: «Celiachia: sostituire con…»)', `${path}.alts`, r.alts || [])}</div></details>`;
 }
 const recList = (base, arr) => (arr || []).map((r, i) => recEditor(base, arr, i, r)).join('') + `<div style="margin-top:8px">${addBtn(base, 'recipe', '＋ Aggiungi piatto')}</div>`;
 const strList = (base, arr, label) => `<div class="card"><h4 style="margin-bottom:8px">${label}</h4>${(arr || []).map((x, i) => `<div class="mini-row"><input type="text" style="flex:1" ${sb(`${base}.${i}`)} value="${esc(x)}">${delBtn(base, i, '✕')}</div>`).join('')}${addBtn(base, 'str', '＋ Aggiungi')}</div>`;
@@ -183,7 +183,7 @@ function viewCatalog() {
   const years = [...new Set([cur, cur + 1, ...Object.keys(S.settings.catalogs).map(Number)])].sort();
   const C = catalogByYear(y), b = `catalogs.${y}`;
   const head = `<div class="secthead"><div><h1>Catalogo menù</h1><p>Il menù dell'anno: isole, piatti a tavola, dolci, bevande e allestimenti che i clienti possono scegliere. Ogni evento usa il catalogo dell'anno della sua data. Quando esce il nuovo menù, creane l'anno e aggiornalo qui.</p></div></div>
-    <div class="row" style="margin-bottom:6px">${years.map(yy => `<a class="btn ${yy === y ? '' : 'alt'}" href="#/catalog/${yy}/${tab}">${yy}${yy === cur ? ' · anno in corso' : yy === cur + 1 ? ' · anno futuro' : ''}</a>`).join('')}<button class="btn sm alt" data-act="cat-newyear">＋ Nuovo anno</button></div>
+    <div class="row" style="margin-bottom:6px">${years.map(yy => `<a class="btn ${yy === y ? '' : 'alt'}" href="#/catalog/${yy}/${tab}">${yy}${yy === cur ? ' · anno in corso' : yy === cur + 1 ? ' · anno futuro' : ''}</a>`).join('')}<button class="btn sm alt" data-act="cat-newyear">＋ Nuovo anno</button><button class="btn sm sand right" data-act="cat-std" title="Compila le quantità standard (a persona e scarto) delle materie prime che ne sono prive">Compila quantità standard</button></div>
     <div class="tabs">${CAT_TABS.map(([k, t]) => `<a href="#/catalog/${y}/${k}" class="${tab === k ? 'on' : ''}">${t}</a>`).join('')}</div>`;
   let body = '';
   if (tab === 'aperitivo') body = `<div class="row" style="margin-bottom:10px"><h3>Isole d'aperitivo</h3><span class="right">${addBtn(`${b}.isole`, 'isola', '＋ Isola show-cooking', 'data-tipo="show"')} ${addBtn(`${b}.isole`, 'isola', '＋ Isola a passaggio', 'data-tipo="passaggio"')}</span></div>
@@ -347,6 +347,10 @@ function rlibGroups(C) {
   g.push(['Secondi', C.secondi], ['Formaggi', C.formaggi], ['Dessert', [...C.dessert, ...(C.torta ? [C.torta] : [])]], ['Lounge · dolci', C.lounge.dolci], ['Menù bambini', (C.menuBimbi || {}).items || []]);
   return g.filter(([, a]) => a && a.length);
 }
+function libIng(r) {
+  const rows = (r.ing || []).map(parseIng);
+  return `<table class="tb ing"><thead><tr><th>Ingrediente</th><th class="num">Netto a persona</th><th class="num">Scarto</th><th class="num">A persona · compreso scarto</th><th class="num">Per 10 persone</th></tr></thead><tbody>${rows.map(i => { const lp = i.q !== '' ? i.q / (1 - i.s / 100) : null; return `<tr><td>${esc(i.n)}</td><td class="num">${i.q !== '' ? qn(i.q) + ' ' + esc(i.u) : '—'}</td><td class="num">${i.s ? i.s + '%' : '—'}</td><td class="num">${lp !== null ? `<b>${qn(lp)} ${esc(i.u)}</b>` : '—'}</td><td class="num">${lp !== null ? qn(lp * 10) + ' ' + esc(i.u) : '—'}</td></tr>`; }).join('')}</tbody></table>`;
+}
 function viewRicettarioLib() {
   const cur = new Date().getFullYear(), y = ROUTE.year, C = catalogByYear(y), q = norm(RL.q);
   const years = [...new Set([cur, cur + 1, ...Object.keys(S.settings.catalogs).map(Number)])].sort();
@@ -354,8 +358,9 @@ function viewRicettarioLib() {
   const body = groups.filter(([n]) => !RL.sec || n.split(' · ')[0] === RL.sec).map(([n, arr]) => {
     const f = arr.filter(r => !q || norm(r.name + ' ' + (r.desc || '') + ' ' + (r.ing || []).map(x => parseIng(x).n).join(' ')).includes(q)); if (!f.length) return '';
     return `<div class="secbar"><h3>${esc(n)}</h3><span class="muted small">${f.length} ricette</span></div>${f.map(r => `<details class="rcp"><summary><div class="rn">${esc(r.name)}${tagHtml(r)}<small>${esc(r.desc || '')}</small></div></summary>
-      <div class="body"><div><h4>🛒 Materia prima</h4><ul class="small">${(r.ing || []).map(x => `<li>${esc(ingLabel(x))}</li>`).join('') || '<li class="muted">—</li>'}</ul></div><div><h4>🥣 Semilavorati</h4><ul class="small">${(r.semi || []).map(x => `<li>${esc(x)}</li>`).join('') || '<li class="muted">—</li>'}</ul></div><div><h4>🍽 Composizione</h4><ul class="small">${(r.asm || []).map(x => `<li>${esc(x)}</li>`).join('') || '<li class="muted">—</li>'}</ul></div>
-      <div style="grid-column:1/-1"><h4>👨‍🍳 Procedimento</h4><div class="small" style="white-space:pre-wrap">${r.proc ? esc(r.proc) : '<span class="muted">Nessun procedimento inserito.</span>'}</div></div></div></details>`).join('')}`;
+      <div class="body rsheet"><div style="grid-column:1/-1"><h4>1 · Ingredienti <span class="muted small">quantità a persona, compreso lo scarto</span></h4>${libIng(r)}</div>
+      <div><h4>2 · Lavorazioni</h4>${procSteps(r.proc)}</div><div><h4>3 · Semilavorato</h4><ul class="small">${(r.semi || []).map(x => `<li>${esc(x)}</li>`).join('') || '<li class="muted">—</li>'}</ul></div><div><h4>4 · Impiattamento</h4><ul class="small">${(r.asm || []).map(x => `<li>${esc(x)}</li>`).join('') || '<li class="muted">—</li>'}</ul></div>
+      ${(r.alts || []).length ? `<div style="grid-column:1/-1"><h4>⚠ Alternative per esigenze</h4>${r.alts.map(a => `<div class="small" style="margin:2px 0">${esc(a)}</div>`).join('')}</div>` : ''}</div></details>`).join('')}`;
   }).join('');
   return `<div class="secthead"><div><h1>Libreria ricette</h1><p>Tutte le ricette del menù ${y}: ingredienti, semilavorati, composizione e procedimento. ${AUTH.cucina ? '' : 'Per modificarle o aggiungere il procedimento vai in <a href="#/catalog/' + y + '/aperitivo">Catalogo menù</a>.'}</p></div><button class="btn alt noprint" onclick="window.print()">Stampa</button></div>
   <div class="row noprint" style="margin-bottom:10px">${years.map(yy => `<a class="btn ${yy === y ? '' : 'alt'}" href="#/ricettario/${yy}">${yy}</a>`).join('')}</div>
@@ -377,3 +382,5 @@ function dataCard() {
 
 ACTIONS['cm-lib-add'] = () => { (S.settings.customMenus = S.settings.customMenus || []).push({ id: uid(), nome: 'Nuovo menù aziende', prezzo: '', sezioni: [{ nome: 'Antipasto', items: [] }, { nome: 'Primo', items: [] }, { nome: 'Secondo', items: [] }, { nome: 'Dolce', items: [] }] }); save(); rr(); };
 ACTIONS['cm-lib-del'] = el => { if (!confirm('Eliminare il modello?')) return; S.settings.customMenus.splice(+el.dataset.i, 1); save(); rr(); };
+
+ACTIONS['cat-std'] = () => { const n = applyStdQuantities(catalogByYear(ROUTE.year)); save(); rr(); toast(n ? `Quantità standard inserite in ${n} materie prime: valori indicativi, rivedili con lo chef` : 'Tutte le materie prime hanno già una quantità'); };

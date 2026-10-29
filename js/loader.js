@@ -1,7 +1,7 @@
 /* Avvio del gestionale. Online il codice dell'app non è un file pubblico: si scarica solo dopo il login (/api/bundle).
    In locale (file://) i file si caricano direttamente. */
 (function () {
-  const FILES = ['catalog', 'store', 'app', 'sync', 'seatplan', 'views-evento', 'views-menu', 'views-prova', 'views-econ', 'views-home', 'views-portale', 'views-servizio'].map(n => 'js/' + n + '.js');
+  const FILES = ['catalog', 'store', 'stdqty', 'app', 'sync', 'seatplan', 'views-evento', 'views-menu', 'views-prova', 'views-econ', 'views-home', 'views-portale', 'views-servizio'].map(n => 'js/' + n + '.js');
   const API = (window.LASTELLA_CONFIG || {}).api, TK = 'lastella-token';
   const tok = () => { try { return localStorage.getItem(TK) || ''; } catch { return ''; } };
   const setTok = t => { try { t ? localStorage.setItem(TK, t) : localStorage.removeItem(TK); } catch {} };

@@ -47,7 +47,7 @@ function newEvent() {
     },
     prova: { data: '', ora: '', persone: 2, antipasti: [], entree: [], primi: [], secondi: [], vini: [], note: '' },
     custom: { attivo: false, sostituisce: false, titolo: '', prezzo: '', sezioni: [], note: '' },
-    servizio: { steps: {} },
+    servizio: { steps: {}, order: [], tavoli: [], conf: {} },
     allest: {}, addons: {}, special: [], recipes: {}, econ: { rettifiche: [], note: '' }, pagamenti: [], pagAuto: true,
     consegne: {
       bussola: [], numeriOk: false, allergieOk: false, tavoliOk: false, disposizioneOk: false, seggiolini: '', attrezzatura: '', extratime: '', orientamento: '', sposiLato: 'Committente 1 a sinistra, committente 2 a destra',

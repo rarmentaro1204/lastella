@@ -12,7 +12,7 @@ const API = '/api/portal/' + encodeURIComponent(TOKEN);
 const ALLERGIE = [['glutine', 'Glutine'], ['crostacei', 'Crostacei'], ['uova', 'Uova'], ['pesce', 'Pesce'], ['arachidi', 'Arachidi'], ['soia', 'Soia'], ['latte', 'Latte'], ['guscio', 'Frutta a guscio'], ['sedano', 'Sedano'], ['senape', 'Senape'], ['sesamo', 'Sesamo'], ['solfiti', 'Solfiti'], ['lupini', 'Lupini'], ['molluschi', 'Molluschi']];
 const INTOLL = [['celiachia', 'Celiachia'], ['lattosio', 'Lattosio'], ['nichel', 'Nichel'], ['istamina', 'Istamina'], ['fruttosio', 'Fruttosio'], ['favismo', 'Favismo'], ['gravidanza', 'Gravidanza'], ['funghi', 'Funghi']];
 const DIETE = ['', 'Vegetariano', 'Vegano', 'Fruttariano', 'Pescetariano', 'Crudista', 'Halal', 'Kosher'];
-const TABS = [['home', 'Il tuo evento'], ['aperitivo', 'Aperitivo'], ['tavola', 'A tavola'], ['dolci', 'Dolci e vini'], ['allest', 'Allestimenti'], ['invitati', 'Invitati'], ['tavoli', 'Tavoli'], ['richieste', 'Richieste speciali'], ['fine', 'Note e conferma'], ['eco', 'Riepilogo economico']];
+const TABS = [['home', 'Il tuo evento'], ['aperitivo', 'Aperitivo'], ['tavola', 'A tavola'], ['dolci', 'Dolci e vini'], ['prova', 'Prova menù'], ['allest', 'Allestimenti'], ['invitati', 'Invitati'], ['tavoli', 'Tavoli'], ['richieste', 'Richieste speciali'], ['fine', 'Note e conferma'], ['eco', 'Riepilogo economico']];
 let EVRAW = '', EV = null, D = null, tab = 'home', dirty = false, msg = '', saving = false;
 
 const fmt = iso => iso ? new Date(iso + 'T12:00:00').toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }) : '—';
@@ -22,7 +22,8 @@ async function call(method, body) {
   return { ok: r.ok, status: r.status, body: await r.json().catch(() => ({})) };
 }
 function loadEv(ev) {
-  EV = ev; D = { menu: clone(ev.menu), allest: clone(ev.allest), guests: clone(ev.guests), tables: clone(ev.tables || []), special: clone(ev.special), nota: ev.nota || '' }; dirty = false;
+  EV = ev; D = { menu: clone(ev.menu), allest: clone(ev.allest), guests: clone(ev.guests), tables: clone(ev.tables || []), special: clone(ev.special), prova: clone(ev.prova || {}), nota: ev.nota || '' }; dirty = false;
+  for (const k of ['antipasti', 'entree', 'primi', 'secondi', 'vini']) D.prova[k] = D.prova[k] || [];
   const m = D.menu; for (const k of ['show', 'passaggio', 'extraBuvette', 'pre', 'entree', 'primi', 'secondi', 'extraVini', 'lounge']) m[k] = m[k] || [];
 }
 async function boot() {
@@ -38,6 +39,7 @@ async function poll() {
   EVRAW = raw; loadEv(r.body.event); if (tab === 'tavoli' && document.getElementById('sp-root')) SeatPlan.refresh(); else draw();
 }
 
+const C0 = () => EV.catalog;
 const locked = k => EV.locks.all || EV.locks[k];
 const dis = k => (locked(k) ? 'disabled' : '');
 const get = path => path.split('.').reduce((o, k) => (o == null ? o : o[k]), D);
@@ -69,6 +71,16 @@ function view() {
     <h3>Secondo piatto</h3>${dishes('menu.secondi', C.secondi, 'menu')}
     ${C.formaggi.length ? `<h3>Formaggi</h3><label class="opt ${D.menu.formaggi ? 'on' : ''} ${locked('menu') ? 'dis' : ''}"><input type="checkbox" data-flag="menu.formaggi" ${D.menu.formaggi ? 'checked' : ''} ${dis('menu')}><div><b>${esc(C.formaggi[0].name)}</b><div class="d">${esc(C.formaggi[0].desc)}</div></div></label>` : ''}
     <h3>Note sul menù a tavola</h3><textarea data-set="menu.noteMenu" ${dis('menu')}>${esc(D.menu.noteMenu || '')}</textarea>`;
+  if (tab === 'prova') {
+    const lim = { antipasti: 4, entree: 2, primi: 2, secondi: 2 }, cnt = k => `<span class="pill ${D.prova[k].length === lim[k] ? 'ok' : ''}">${D.prova[k].length}/${lim[k]}</span>`;
+    const chk = (k, r) => `<label class="opt ${D.prova[k].includes(r.id) ? 'on' : ''} ${locked('menu') ? 'dis' : ''}"><input type="checkbox" data-tog="prova.${k}" data-lim="${lim[k]}" data-v="${esc(r.id)}" ${D.prova[k].includes(r.id) ? 'checked' : ''} ${dis('menu')}><div><b>${esc(r.name)}</b>${r.desc ? `<div class="d">${esc(r.desc)}</div>` : ''}</div></label>`;
+    return `<h2>Prova menù</h2>${lockNote('menu')}<p class="muted">Per la degustazione scegliete cosa assaggiare dal menù completo: <b>4 antipasti</b> dalle isole d'aperitivo, <b>2 entrée</b>, <b>2 primi</b> e <b>2 secondi</b>. ${D.prova.data ? `La vostra prova è fissata per <b>${esc(fmt(D.prova.data))}${D.prova.ora ? ' alle ' + esc(D.prova.ora) : ''}</b>.` : 'La data della prova vi sarà comunicata da La Stella.'} Le scelte della prova non vincolano il menù dell'evento.</p>
+    <h3>Antipasti ${cnt('antipasti')}</h3>${C0().isole.map(i => `<div class="muted small" style="margin:10px 0 4px"><b>${esc(i.nome)}</b> · ${esc(i.sub)}</div>${i.items.map(r => chk('antipasti', r)).join('')}`).join('')}
+    <h3>Entrée ${cnt('entree')}</h3>${C0().entree.map(r => chk('entree', r)).join('')}
+    <h3>Primi ${cnt('primi')}</h3>${C0().primi.map(g => `<div class="muted small" style="margin:10px 0 4px">${esc(g.gruppo)}</div>${g.items.map(r => chk('primi', r)).join('')}`).join('')}
+    <h3>Secondi ${cnt('secondi')}</h3>${C0().secondi.map(r => chk('secondi', r)).join('')}
+    <h3>Vini da assaggiare <span class="pill">${D.prova.vini.length}</span></h3>${[...C0().vini.bianchi, ...C0().vini.rossi].map(v => check('prova.vini', v, v, '', 'menu')).join('')}`;
+  }
   if (tab === 'dolci') return `<h2>Dolci e vini</h2>${lockNote('menu')}
     <h3>Dessert nuziale</h3>${C.dessert.map(r => radio('menu.dessert', r.id, r.name, r.desc, 'menu')).join('')}
     <h3>Lounge bar · piccola pasticceria</h3>${dishes('menu.lounge', C.lounge, 'menu')}
@@ -128,7 +140,7 @@ function draw() {
 }
 async function savePortal(extra = {}) {
   saving = true; msg = ''; draw();
-  const body = { menu: D.menu, allest: D.allest, guests: D.guests, tables: D.tables, special: D.special, nota: D.nota, ...extra };
+  const body = { menu: D.menu, allest: D.allest, guests: D.guests, tables: D.tables, prova: D.prova, special: D.special, nota: D.nota, ...extra };
   const r = await call('PUT', body); saving = false;
   if (!r.ok) { msg = r.body.error || 'Errore, riprova'; draw(); return; }
   const keep = tab; EVRAW = JSON.stringify(r.body.event); loadEv(r.body.event); tab = keep;
@@ -161,7 +173,8 @@ document.addEventListener('input', e => {
 document.addEventListener('change', e => {
   const t = e.target; if (isText(t)) return; msg = '';
   if (t.dataset.set !== undefined) { set(t.dataset.set, t.dataset.v !== undefined ? t.dataset.v : t.value); draw(); }
-  else if (t.dataset.tog !== undefined) { const a = get(t.dataset.tog) || [], i = a.indexOf(t.dataset.v); i < 0 ? a.push(t.dataset.v) : a.splice(i, 1); set(t.dataset.tog, a); draw(); }
+  else if (t.dataset.tog !== undefined) {
+    if (t.dataset.lim && t.checked && (get(t.dataset.tog) || []).length >= +t.dataset.lim) { t.checked = false; toastP('Limite raggiunto: togli un piatto per sceglierne un altro'); return; } const a = get(t.dataset.tog) || [], i = a.indexOf(t.dataset.v); i < 0 ? a.push(t.dataset.v) : a.splice(i, 1); set(t.dataset.tog, a); draw(); }
   else if (t.dataset.flag !== undefined) { set(t.dataset.flag, t.checked); draw(); }
   else if (t.dataset.al !== undefined) { const st = (D.allest[t.dataset.al] = D.allest[t.dataset.al] || {}); st[t.dataset.f] = t.dataset.v !== undefined ? t.dataset.v : t.value; dirty = true; draw(); }
   else if (t.dataset.g !== undefined) { D.guests[+t.dataset.g][t.dataset.f] = t.value; dirty = true; draw(); }

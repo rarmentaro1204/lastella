@@ -60,11 +60,11 @@ function svCourses(E) {
   const C0 = catalogFor(E), IDX = recipeIndexOf(C0), m = E.menu, nm = id => (IDX[id] || {}).name || id, out = [];
   const isl = ids => ids.map(id => C0.isole.find(i => i.id === id)).filter(Boolean).map(i => i.nome);
   out.push({ key: 'aperitivo', nome: 'Aperitivo', piatti: [...isl(m.show).map(x => 'Show-cooking: ' + x), ...isl(m.passaggio).map(x => 'A passaggio: ' + x), [C0.buvette.bollicina.split(',')[0], m.cocktail, m.succo && 'succo ' + m.succo.toLowerCase()].filter(Boolean).join(' · ')].filter(Boolean) });
-  out.push({ key: 'pre', nome: 'Pre-entrée', piatti: m.pre.map(nm) }, { key: 'entree', nome: 'Entrée', piatti: m.entree.map(nm) }, { key: 'primo', nome: 'Primo piatto', piatti: m.primi.map(nm) }, { key: 'secondo', nome: 'Secondo piatto', piatti: m.secondi.map(nm) });
+  out.push({ key: 'pre', nome: 'Pre-entrée', piatti: m.pre.map(nm), ids: m.pre }, { key: 'entree', nome: 'Entrée', piatti: m.entree.map(nm), ids: m.entree }, { key: 'primo', nome: 'Primo piatto', piatti: m.primi.map(nm), ids: m.primi }, { key: 'secondo', nome: 'Secondo piatto', piatti: m.secondi.map(nm), ids: m.secondi });
   if (m.formaggi) out.push({ key: 'formaggi', nome: 'Formaggi', piatti: ['Degustazione di formaggi'] });
-  out.push({ key: 'dessert', nome: 'Dessert', piatti: m.dessert ? [nm(m.dessert), 'Torta da taglio', 'Brindisi'] : [] });
+  out.push({ key: 'dessert', nome: 'Dessert', piatti: m.dessert ? [nm(m.dessert), 'Torta da taglio', 'Brindisi'] : [], ids: m.dessert ? [m.dessert] : [] });
   out.push({ key: 'lounge', nome: 'Lounge bar', piatti: [...m.lounge.map(nm), m.caffeAlt && 'Caffè: ' + m.caffeAlt].filter(Boolean) });
-  if (E.custom && E.custom.attivo) (E.custom.sezioni || []).forEach((sz, i) => out.push({ key: 'cm' + i, nome: (sz.nome || 'Portata') + ' (menù personalizzato)', piatti: (sz.items || []).map(nm) }));
+  if (E.custom && E.custom.attivo) (E.custom.sezioni || []).forEach((sz, i) => out.push({ key: 'cm' + i, nome: (sz.nome || 'Portata') + ' (menù personalizzato)', piatti: (sz.items || []).map(nm), ids: sz.items || [] }));
   return out.filter(c => c.piatti.length);
 }
 const svCourseOptions = E => [...svCourses(E).map(c => [c.key, c.nome]), ['altro', 'Altro / tutto il menù']];
@@ -115,8 +115,91 @@ ACTIONS['sv-print-all'] = () => {
   w.document.write(`<!doctype html><meta charset="utf-8"><title>Ordine di servizio</title><style>body{font-family:Arial,sans-serif;color:#222;margin:0;font-size:12px}section{padding:24px 30px;page-break-after:always}.hd{color:#a8907a;font-size:11px;letter-spacing:.1em;margin-bottom:8px}h1{font-family:Georgia,serif;font-weight:400;font-size:24px;margin:4px 0 12px}h1 small{font-size:13px;color:#666}h2{font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:#a8907a;margin:16px 0 6px}table{border-collapse:collapse;width:100%}td,th{border-bottom:1px solid #ddd;padding:5px 6px;text-align:left;vertical-align:top}th{font-size:10px;text-transform:uppercase;color:#777}@page{margin:10mm}</style>${ordine}${tavoli}<script>onload=()=>print()<\/script>`);
   w.document.close();
 };
-VIEWS.servizio = E => `<div class="secthead"><div><h2>Servizio</h2><p>Dalla mappa dei tavoli: i commensali posto per posto con tutte le allergie, intolleranze e diete, e i riepiloghi per la cucina e la sala.</p></div><div class="row right noprint"><button class="btn alt" data-act="sv-print">🖨 Stampa</button></div></div>
+const svRiepilogo = E => `<div class="secthead"><div><h2>Servizio</h2><p>Dalla mappa dei tavoli: i commensali posto per posto con tutte le allergie, intolleranze e diete, e i riepiloghi per la cucina e la sala.</p></div><div class="row right noprint"><button class="btn alt" data-act="sv-print">🖨 Stampa</button></div></div>
   ${svOrdine(E)}<div class="sp"></div>${svRecapNeeds(E)}<div class="sp"></div>${svRecapCoperti(E)}<div class="sp"></div>${svTables(E)}`;
 document.addEventListener('toggle', e => { const d = e.target; if (d.dataset && d.dataset.svk) { d.open ? SV.open.add(d.dataset.svk) : SV.open.delete(d.dataset.svk); } }, true);
 ACTIONS['sv-all'] = el => { const E = curEvent(); E.tables.forEach(t => (el.dataset.v === '1' ? SV.open.add(t.id) : SV.open.delete(t.id))); rr(); };
 ACTIONS['sv-print'] = () => { document.querySelectorAll('details[data-svk]').forEach(d => { d.open = true; }); window.print(); };
+
+/* ---------------------------------------------------------------- SERVIZIO · tavolo per tavolo con comanda */
+SV.mode = 'riepilogo'; SV.cur = '';
+const SYN = { celiachia: ['celiac', 'glutine'], glutine: ['celiac', 'glutine'], lattosio: ['lattosio', 'latte'], latte: ['lattosio', 'latte'], uova: ['uova', 'uovo'], pesce: ['pesce'], crostacei: ['crostacei'], arachidi: ['arachidi'], soia: ['soia'], guscio: ['guscio', 'frutta a guscio', 'noci'], sedano: ['sedano'], senape: ['senape'], sesamo: ['sesamo'], solfiti: ['solfiti'], lupini: ['lupini'], molluschi: ['molluschi'], nichel: ['nichel'], istamina: ['istamina'], fruttosio: ['fruttosio'], favismo: ['favismo'], gravidanza: ['gravidanza'], funghi: ['funghi'] };
+function svTokens(g) {   // parole con cui una «alternativa» del catalogo può riconoscere le esigenze del commensale
+  const t = new Set(); [...(g.allergie || []), ...(g.intolleranze || [])].forEach(k => { t.add(norm(k)); (SYN[k] || []).forEach(x => t.add(norm(x))); }); if (g.dieta) t.add(norm(g.dieta)); return [...t];
+}
+const svAltFor = (r, toks) => (r.alts || []).filter(a => { const label = norm(String(a).split(':')[0]); return toks.some(t => label.includes(t) || t.includes(label.trim())) && label.trim(); }).map(a => String(a).split(':').slice(1).join(':').trim() || a);
+function svProfile(g) {   // «cosa prende» il commensale: menù standard o una variante
+  const f = SeatPlan.flagsOf(g), mods = g.mods || [];
+  if (!f.length && !mods.length) return { key: 'std', label: 'Menù standard' };
+  const label = f.map(x => x[1]).join(' + ') || 'Con modifiche', key = [...svTokens(g)].sort().join('+') + '|' + mods.map(m => m.c + ':' + norm(m.t)).join(',');
+  return { key, label };
+}
+function svOrder(E) {
+  const T = E.tables.slice().sort((a, b) => a.num - b.num), ord = ((E.servizio && E.servizio.tavoli) || []).filter(id => T.some(t => t.id === id));
+  return [...ord.map(id => T.find(t => t.id === id)), ...T.filter(t => !ord.includes(t.id))];
+}
+function svComanda(E, t) {
+  const gs = t.seats.map((id, i) => ({ g: id && E.guests.find(x => x.id === id), i })).filter(x => x.g), C0 = catalogFor(E), IDX = recipeIndexOf(C0), courses = svCourses(E).filter(c => c.ids && c.ids.length);
+  const groups = new Map(); gs.forEach(x => { const p = svProfile(x.g); if (!groups.has(p.key)) groups.set(p.key, { label: p.label, key: p.key, list: [] }); groups.get(p.key).list.push(x); });
+  const arr = [...groups.values()].sort((a, b) => (a.key === 'std' ? -1 : b.key === 'std' ? 1 : b.list.length - a.list.length));
+  arr.forEach(gr => {
+    if (gr.key === 'std') return;
+    const toks = [...new Set(gr.list.flatMap(x => svTokens(x.g)))];
+    gr.alt = courses.map(c => ({ corso: c.nome, righe: c.ids.map(id => { const r = IDX[id]; return r ? { piatto: r.name, alts: svAltFor(r, toks) } : null; }).filter(Boolean) }));
+    gr.mods = [...new Set(gr.list.flatMap(x => (x.g.mods || []).map(m => `${svCourseName(E, m.c)}: ${m.t}`)))];
+  });
+  return { gs, arr, conf: gs.filter(x => (E.servizio.conf || {})[x.g.id]).length };
+}
+const svComandaHtml = (E, t, forPrint) => {
+  const k = svComanda(E, t), line = gr => `<b>${gr.list.length} × ${esc(gr.label)}</b>`;
+  return `<div class="${forPrint ? '' : 'card'}" style="${forPrint ? '' : 'background:#fcfbf9'}"><div class="chead"><h3>Comanda · ${esc(t.nome || 'Tavolo ' + t.num)}</h3><span class="muted small">${k.gs.length} coperti · le alternative si scrivono nel Catalogo, nella ricetta (campo «Alternative per esigenze»)</span></div>
+    <div style="font-size:${forPrint ? 15 : 16}px;margin:6px 0 10px">${k.arr.map(line).join(' &nbsp;·&nbsp; ') || 'Nessun commensale a questo tavolo'}</div>
+    ${k.arr.filter(gr => gr.key !== 'std').map(gr => `<div style="margin:8px 0;padding:8px 10px;border-left:4px solid #c46a4f;background:${forPrint ? '#faf3ef' : '#fff'}"><b>${gr.list.length} × ${esc(gr.label)}</b> <span class="muted small">(${gr.list.map(x => `posto ${x.i + 1} ${esc(svName(x.g))}`).join(', ')})</span>
+      ${gr.mods.length ? `<div class="small" style="margin-top:4px"><b>Modifiche indicate:</b> ${gr.mods.map(esc).join(' · ')}</div>` : ''}
+      ${gr.alt.map(c => `<div class="small" style="margin-top:4px"><b>${esc(c.corso)}</b>: ${c.righe.map(r => `${esc(r.piatto)} → ${r.alts.length ? '<b>' + r.alts.map(esc).join(' / ') + '</b>' : '<i class="muted">alternativa da definire</i>'}`).join('; ')}</div>`).join('')}</div>`).join('')}</div>`;
+};
+function svTavoliMode(E) {
+  const order = svOrder(E), cur = order.find(t => t.id === SV.cur) || order[0], pos = order.indexOf(cur);
+  const conf = (E.servizio.conf = E.servizio.conf || {});
+  const chip = t => { const k = svComanda(E, t), done = k.gs.length && k.conf === k.gs.length; return `<button class="chip ${t.id === (cur && cur.id) ? 'on' : ''}" data-act="sv-goto" data-t="${t.id}">${esc(t.nome || 'T' + t.num)} <small>${k.conf}/${k.gs.length}${done ? ' ✓' : ''}</small></button>`; };
+  if (!cur) return '<div class="empty">Nessun tavolo: crea la mappa in Evento → Tavoli e mappa.</div>';
+  const gs = cur.seats.map((id, i) => ({ g: id && E.guests.find(x => x.id === id), i })), occ = gs.filter(x => x.g), cs = svCourses(E);
+  return `<div class="card"><div class="chead"><h3>Ordine di servizio dei tavoli</h3><span class="muted small">la caposala detta l'ordine: scrivi i numeri dei tavoli nell'ordine in cui si serve</span></div>
+    <div class="row" style="gap:8px;margin:8px 0"><input type="text" id="sv-ord" style="max-width:420px" placeholder="es. 1 3 7 2 4 …" value="${esc(order.map(t => t.num).join(' '))}"><button class="btn sm" data-act="sv-ord-set">Imposta ordine</button><button class="btn sm alt right" data-act="sv-print-all">🖨 Stampa ordine e comande</button></div>
+    <div class="chips">${order.map((t, i) => `<span style="display:inline-flex;align-items:center;gap:2px"><small class="muted">${i + 1}.</small>${chip(t)}</span>`).join('')}</div></div><div class="sp"></div>
+  <div class="card"><div class="row" style="gap:10px"><button class="btn sm alt" data-act="sv-goto" data-t="${(order[pos - 1] || {}).id || ''}" ${pos === 0 ? 'disabled' : ''}>‹ Precedente</button>
+    <h2 style="margin:0;flex:1;text-align:center">${esc(cur.nome || 'Tavolo ' + cur.num)} <small class="muted" style="font-size:14px">· ${pos + 1}° nell'ordine di servizio su ${order.length}</small></h2><button class="btn sm" data-act="sv-goto" data-t="${(order[pos + 1] || {}).id || ''}" ${pos === order.length - 1 ? 'disabled' : ''}>Successivo ›</button></div>
+    <h4 style="margin:12px 0 6px">Menù principale</h4><div class="small">${cs.map(c => `<div style="margin:2px 0"><b>${esc(c.nome)}</b>: ${c.piatti.map(esc).join(' · ')}</div>`).join('')}</div></div><div class="sp"></div>
+  ${svComandaHtml(E, cur)}<div class="sp"></div>
+  <div class="card"><div class="chead"><h3>Posto per posto</h3><span class="right row noprint"><button class="btn sm alt" data-act="sv-conf-all" data-t="${cur.id}" data-v="1">Conferma tutti i posti</button><button class="btn sm alt" data-act="sv-conf-all" data-t="${cur.id}" data-v="0">Azzera conferme</button><button class="btn sm alt" data-act="sv-print-one" data-t="${cur.id}">🖨 Stampa comanda</button></span></div>
+    <table class="tb"><thead><tr><th style="width:56px">Posto</th><th>Commensale</th><th>Cosa prende</th><th>Modifiche al menù</th><th style="width:100px">Confermato</th></tr></thead><tbody>
+    ${gs.map(x => x.g ? `<tr class="${conf[x.g.id] ? 'okrow' : ''}"><td><b>${x.i + 1}</b></td><td><b>${esc(svName(x.g))}</b><div class="small muted">${esc(x.g.fascia)}${x.g.seggiolone ? ' · 🪑' : ''}</div></td><td>${svProfile(x.g).key === 'std' ? '<span class="pill">Menù standard</span>' : `<div>${SeatPlan.flagHtml(SeatPlan.flagsOf(x.g))}</div>`}</td><td class="small">${svModsCell(E, x.g)}</td>
+      <td><label class="row" style="gap:6px;cursor:pointer"><input type="checkbox" style="width:22px;height:22px" data-b="servizio.conf.${x.g.id}" data-r ${conf[x.g.id] ? 'checked' : ''}> ${conf[x.g.id] ? '<span class="pill ok">✓ ok</span>' : ''}</label></td></tr>` : `<tr><td>${x.i + 1}</td><td colspan="4" class="muted">posto libero</td></tr>`).join('')}</tbody></table></div>`;
+}
+ACTIONS['sv-goto'] = el => { if (el.dataset.t) { SV.cur = el.dataset.t; rr(); window.scrollTo(0, 0); } };
+ACTIONS['sv-mode'] = el => { SV.mode = el.dataset.v; rr(); };
+ACTIONS['sv-ord-set'] = () => {
+  const E = curEvent(), nums = ($('#sv-ord').value.match(/\d+/g) || []).map(Number), ids = [];
+  nums.forEach(n => { const t = E.tables.find(x => x.num === n); if (t && !ids.includes(t.id)) ids.push(t.id); });
+  (E.servizio = E.servizio || {}).tavoli = ids; save(); rr(); toast('Ordine dei tavoli impostato: ' + ids.length + ' tavoli');
+};
+ACTIONS['sv-conf-all'] = el => { const E = curEvent(), t = E.tables.find(x => x.id === el.dataset.t); E.servizio.conf = E.servizio.conf || {}; t.seats.filter(Boolean).forEach(id => { if (el.dataset.v === '1') E.servizio.conf[id] = true; else delete E.servizio.conf[id]; }); save(); rr(); };
+function svPrintDoc(E, tables, withOrdine) {
+  const w = window.open('', '_blank'); if (!w) { toast('Consenti i popup per stampare'); return; }
+  const steps = svSteps(E), st = (E.servizio && E.servizio.steps) || {}, cs = svCourses(E), head = `<div class="hd"><b>LA STELLA</b> · ${esc(evName(E))} · ${esc(fmtDate(E.q.data))} · ${esc(E.q.locationNome || '')}</div>`;
+  const ordine = withOrdine ? `<section>${head}<h1>Ordine di servizio</h1><h2>Tavoli, nell'ordine</h2><p style="font-size:16px">${svOrder(E).map((t, i) => `<b>${i + 1}.</b> ${esc(t.nome || 'Tavolo ' + t.num)}`).join(' &nbsp; ')}</p><h2>Portate</h2><table><tr><th>Ora</th><th>Portata</th><th>Piatti</th><th>Note</th></tr>${steps.map((c, i) => `<tr><td>${esc((st[c.key] || {}).ora || '')}</td><td><b>${i + 1} · ${esc(c.nome)}</b></td><td>${c.piatti.map(esc).join('<br>')}</td><td>${esc((st[c.key] || {}).nota || '')}</td></tr>`).join('')}</table></section>` : '';
+  const pages = tables.map((t, ti) => { const gs = t.seats.map((id, i) => ({ g: id && E.guests.find(x => x.id === id), i })).filter(x => x.g);
+    return `<section>${head}<h1>${esc(t.nome || 'Tavolo ' + t.num)} <small>${withOrdine ? ti + 1 + '° nel servizio · ' : ''}${gs.length} persone · ${gs.filter(x => x.g.fascia === 'Bambino' || x.g.fascia === 'Neonato').length} bambini</small></h1>
+      <h2>Menù principale</h2><table>${cs.map(c => `<tr><td style="width:150px"><b>${esc(c.nome)}</b></td><td>${c.piatti.map(esc).join(' · ')}</td></tr>`).join('')}</table>
+      <h2>Comanda</h2>${svComandaHtml(E, t, true)}
+      <h2>Posto per posto</h2><table><tr><th style="width:40px">Posto</th><th>Nome</th><th>Cosa prende</th><th style="width:70px">Conferma</th></tr>${gs.map(x => `<tr><td>${x.i + 1}</td><td>${esc(svName(x.g))}</td><td>${svProfile(x.g).key === 'std' ? 'Menù standard' : esc(svProfile(x.g).label) + ((x.g.mods || []).length ? ' — ' + x.g.mods.map(m => esc(svCourseName(E, m.c)) + ': ' + esc(m.t)).join('; ') : '')}</td><td>${(E.servizio.conf || {})[x.g.id] ? '✓' : '☐'}</td></tr>`).join('')}</table></section>`; }).join('');
+  w.document.write(`<!doctype html><meta charset="utf-8"><title>Servizio</title><style>body{font-family:Arial,sans-serif;color:#222;margin:0;font-size:12px}section{padding:24px 30px;page-break-after:always}.hd{color:#a8907a;font-size:11px;letter-spacing:.1em;margin-bottom:8px}h1{font-family:Georgia,serif;font-weight:400;font-size:24px;margin:4px 0 12px}h1 small{font-size:13px;color:#666}h2{font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:#a8907a;margin:16px 0 6px}h3{margin:0;font-size:14px}table{border-collapse:collapse;width:100%}td,th{border-bottom:1px solid #ddd;padding:5px 6px;text-align:left;vertical-align:top}th{font-size:10px;text-transform:uppercase;color:#777}.chead{display:flex;gap:10px}.muted{color:#777}.small{font-size:11px}@page{margin:10mm}</style>${ordine}${pages}<script>onload=()=>print()<\/script>`);
+  w.document.close();
+}
+ACTIONS['sv-print-all'] = () => { const E = curEvent(); svPrintDoc(E, svOrder(E), true); };
+ACTIONS['sv-print-one'] = el => { const E = curEvent(); svPrintDoc(E, [E.tables.find(t => t.id === el.dataset.t)], false); };
+VIEWS.servizio = E => {
+  E.servizio = Object.assign({ steps: {}, order: [], tavoli: [], conf: {} }, E.servizio || {});
+  const tabs = `<div class="row noprint" style="margin-bottom:14px;gap:8px"><button class="chip ${SV.mode === 'riepilogo' ? 'on' : ''}" data-act="sv-mode" data-v="riepilogo">Riepiloghi e ordine delle portate</button><button class="chip ${SV.mode === 'tavoli' ? 'on' : ''}" data-act="sv-mode" data-v="tavoli">Tavolo per tavolo · comande</button></div>`;
+  return tabs + (SV.mode === 'tavoli' ? `<div class="secthead"><div><h2>Servizio · tavolo per tavolo</h2><p>Segui l'ordine di servizio dei tavoli: per ogni tavolo conferma posto per posto cosa prendono e leggi la comanda, con le ricette alternative per intolleranze e diete.</p></div></div>` + svTavoliMode(E) : svRiepilogo(E));
+};

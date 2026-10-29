@@ -179,6 +179,17 @@ document.addEventListener('change', e => { if (e.target.id === 'rsec') { UI.rcpS
 ACTIONS['rc-st'] = el => { UI.rcpSt = el.dataset.v; rr(); };
 ACTIONS['rc-open'] = el => { const E = curEvent(); recipeList(E).forEach(x => el.dataset.v === '1' ? UI.open.add(x.r.id) : UI.open.delete(x.r.id)); rr(); };
 
+const qn = x => num(Math.round(x * 100) / 100);
+const procSteps = txt => (txt ? `<ol class="small" style="margin:0;padding-left:18px">${String(txt).split('\n').map(x => x.trim()).filter(Boolean).map(x => `<li style="margin:3px 0">${esc(x)}</li>`).join('')}</ol>` : '<p class="muted small">Nessuna lavorazione inserita (Catalogo → ricetta → Procedimento, una fase per riga).</p>');
+function ingTable(rid, arr, porz) {
+  return `<table class="tb ing"><thead><tr><th style="width:34px"></th><th>Ingrediente</th><th class="num">Netto a persona</th><th class="num">Scarto %</th><th class="num">A persona · compreso scarto</th><th class="num">Totale ${porz} porz. · compreso scarto</th><th style="width:34px"></th></tr></thead><tbody>
+  ${arr.map((it, i) => { const s = +it.s || 0, lp = it.q !== '' ? it.q / (1 - s / 100) : null; return `<tr class="${it.ok ? 'ok' : ''}"><td><input type="checkbox" data-b="recipes.${rid}.ing.${i}.ok" data-r ${it.ok ? 'checked' : ''}></td><td>${esc(it.n)}</td>
+    <td class="num"><input class="q" type="number" step="any" placeholder="q.tà" data-b="recipes.${rid}.ing.${i}.q" data-r value="${it.q}"> <input class="u" type="text" data-b="recipes.${rid}.ing.${i}.u" value="${esc(it.u)}"></td>
+    <td class="num"><input class="q" style="width:56px" type="number" step="any" min="0" max="99" placeholder="%" data-b="recipes.${rid}.ing.${i}.s" data-r value="${it.s || ''}"></td>
+    <td class="num">${lp !== null ? `<b>${qn(lp)} ${esc(it.u)}</b>` : '—'}</td><td class="num">${lp !== null ? `<b>${qn(lp * porz)} ${esc(it.u)}</b>` : '—'}</td>
+    <td><button class="x" data-act="rc-del" data-rid="${rid}" data-kind="ing" data-i="${i}" title="Rimuovi">✕</button></td></tr>`; }).join('')}</tbody></table>
+    <div class="addrow"><input type="text" placeholder="＋ aggiungi ingrediente…" data-rid="${rid}" data-kind="ing" style="flex:1"><button class="btn sm alt" data-act="rc-add" data-rid="${rid}" data-kind="ing">Aggiungi</button></div>`;
+}
 function ckList(rid, kind, arr, porz, withQty) {
   return arr.map((it, i) => `<div class="ck ${it.ok ? 'ok' : ''}"><input type="checkbox" data-b="recipes.${rid}.${kind}.${i}.ok" data-r ${it.ok ? 'checked' : ''}><span class="t" style="flex:1">${esc(it.n)}</span>
     ${withQty ? `<input class="q" type="number" step="any" title="Quantità per porzione" placeholder="q.tà" data-b="recipes.${rid}.${kind}.${i}.q" data-r value="${it.q}"><input class="u" type="text" data-b="recipes.${rid}.${kind}.${i}.u" value="${esc(it.u)}"><input class="q" style="width:54px" type="number" step="any" min="0" max="99" title="Scarto %" placeholder="scarto%" data-b="recipes.${rid}.${kind}.${i}.s" data-r value="${it.s || ''}"><span class="tot">${it.q !== '' ? num(Math.round(it.q * porz * 100) / 100) + ' ' + esc(it.u) + (+it.s ? `<br><small>da acquistare ${num(Math.round(it.q * porz / (1 - it.s / 100) * 100) / 100)} ${esc(it.u)}</small>` : '') : ''}</span>` : ''}
@@ -190,8 +201,9 @@ function recipeCard(E, x) {
   const pill = (ic, [a, b]) => `<span class="pill ${b && a === b ? 'ok' : ''}" title="">${ic} ${a}/${b}</span>`;
   return `<details class="rcp ${d.pct === 100 ? 'done' : ''}" data-k="${r.id}" ${UI.open.has(r.id) ? 'open' : ''}><summary><div class="rn">${esc(r.name)}${tagHtml(r)}<small>${esc(r.desc)}</small></div>
     ${pill('🛒', p.ing)}${pill('🥣', p.semi)}${pill('🍽', p.asm)}<div class="progress" style="width:90px"><i style="width:${d.pct}%"></i></div><b style="width:38px;text-align:right">${d.pct}%</b></summary>
-    <div class="body"><div><h4>🛒 Materia prima</h4>${ckList(r.id, 'ing', st.ing, porz, true)}</div><div><h4>🥣 Semilavorati</h4>${ckList(r.id, 'semi', st.semi, porz, false)}</div><div><h4>🍽 Composizione del piatto</h4>${ckList(r.id, 'asm', st.asm, porz, false)}</div>
-    ${r.proc ? `<div style="grid-column:1/-1"><h4>👨‍🍳 Procedimento</h4><div class="small" style="white-space:pre-wrap">${esc(r.proc)}</div></div>` : ''}
+    <div class="body rsheet"><div style="grid-column:1/-1"><h4>1 · Ingredienti <span class="muted small">quantità a persona, compreso lo scarto</span></h4>${ingTable(r.id, st.ing, porz)}</div>
+    <div><h4>2 · Lavorazioni</h4>${procSteps(r.proc)}</div><div><h4>3 · Semilavorato</h4>${ckList(r.id, 'semi', st.semi, porz, false)}</div><div><h4>4 · Impiattamento</h4>${ckList(r.id, 'asm', st.asm, porz, false)}</div>
+    ${(r.alts || []).length ? `<div style="grid-column:1/-1"><h4>⚠ Alternative per esigenze</h4>${(r.alts || []).map(a => `<div class="small" style="margin:2px 0">${esc(a)}</div>`).join('')}</div>` : ''}
     <div class="row" style="grid-column:1/-1;border-top:1px solid #eee8e0;padding-top:10px"><label class="row" style="gap:6px">Porzioni <input type="number" style="width:84px" data-b="recipes.${r.id}.porz" data-r value="${st.porz ?? ''}" placeholder="${porz}"></label>
       <input type="text" style="flex:1;min-width:200px" data-b="recipes.${r.id}.note" value="${esc(st.note)}" placeholder="Note dello chef, procedimento, impiattamento…"><button class="btn ghost sm" data-act="rc-reset" data-rid="${r.id}">Ripristina bozza</button></div></div></details>`;
 }

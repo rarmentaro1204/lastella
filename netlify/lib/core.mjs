@@ -24,7 +24,7 @@ function checkPw(password, u) { const h = scryptSync(password, u.salt, 64); cons
 const publicUser = u => ({ email: u.email, role: u.role, approved: !!u.approved, created: u.created });
 
 /* file dell'app serviti solo dopo il login, nell'ordine di caricamento */
-const BUNDLE = ['catalog.js', 'store.js', 'app.js', 'sync.js', 'seatplan.js', 'views-evento.js', 'views-menu.js', 'views-prova.js', 'views-econ.js', 'views-home.js', 'views-portale.js', 'views-servizio.js'];
+const BUNDLE = ['catalog.js', 'store.js', 'stdqty.js', 'app.js', 'sync.js', 'seatplan.js', 'views-evento.js', 'views-menu.js', 'views-prova.js', 'views-econ.js', 'views-home.js', 'views-portale.js', 'views-servizio.js'];
 const PRIVATE_ASSETS = ['demo-seed.js'];
 const raw = (text, status = 200) => new Response(text, { status, headers: { 'content-type': 'application/javascript; charset=utf-8', 'cache-control': 'private, no-store', 'x-content-type-options': 'nosniff' } });
 
@@ -200,6 +200,7 @@ export function createApi({ stores, secret, seed = null, assets = null, now = ()
       if (cucina && method === 'PUT') {
         if (!cur || !body.data || typeof body.data.recipes !== 'object') return err(400, 'Dati non validi.');
         const E = cur.data; E.recipes = body.data.recipes;
+        const cf = body.data.servizio && body.data.servizio.conf; if (cf && typeof cf === 'object') { E.servizio = E.servizio || {}; E.servizio.conf = Object.fromEntries(Object.entries(cf).filter(([k, v]) => ID_RE.test(k) && v === true)); }   // la cucina conferma i posti
         const rev = cur.metadata.rev + 1, at = now(), r = await events.setJSON(id, E, { metadata: { rev, by: me.email, at }, onlyIfMatch: cur.etag });
         if (!r.modified) { const c2 = await events.getWithMetadata(id, { type: 'json' }); return err(409, 'Conflitto', { current: c2 && { id, rev: c2.metadata.rev, data: kitchenEvent(c2.data), by: c2.metadata.by, at: c2.metadata.at } }); }
         await updateIndex(i => { i.events[id] = { rev, at, by: me.email }; });

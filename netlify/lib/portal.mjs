@@ -38,6 +38,7 @@ export function portalView(E, settings, engine) {
   return {
     id: E.id,
     q: pick(q, ['sposo1', 'sposo2', 'data', 'locationNome', 'tipo', 'pasto', 'rito', 'adulti', 'bambini', 'neonati', 'staff', 'scadenzaMenu', 'scadenzaAllest']),
+    prova: (({ data, ora, antipasti, entree, primi, secondi, vini }) => ({ data, ora, antipasti, entree, primi, secondi, vini }))(E.prova || {}),
     menu: E.menu || {}, allest: E.allest || {}, guests: (E.guests || []).map(({ mods, ...g }) => g), tables: E.tables || [],
     special: (E.special || []).filter(s => s.da === 'cliente').map(s => ({ id: s.id, kind: s.kind, titolo: s.titolo, descr: s.descr, sezione: s.sezione, stato: s.stato })),
     economics: engine ? engine.economics(E, settings) : null,
@@ -53,6 +54,14 @@ function cleanMenu(m, cur) {
   for (const k of ['cocktail', 'succo', 'esclusiva', 'bianco', 'rosso', 'dessert', 'caffeAlt', 'formula']) if (k in m) o[k] = str(m[k], 160);
   if ('formaggi' in m) o.formaggi = !!m.formaggi;
   for (const k of ['noteAperitivo', 'noteMenu']) if (k in m) o[k] = str(m[k], 1000);
+  return o;
+}
+/* prova menù: il cliente sceglie quali piatti assaggiare (4 antipasti, 2 entrée, 2 primi, 2 secondi) e i vini */
+const PROVA_LIM = { antipasti: 4, entree: 2, primi: 2, secondi: 2, vini: 30 };
+function cleanProva(p, cur = {}) {
+  if (!p || typeof p !== 'object') return cur;
+  const o = { ...cur };
+  for (const [k, lim] of Object.entries(PROVA_LIM)) if (k in p) o[k] = strArr(p[k], lim, k === 'vini' ? 120 : 60);
   return o;
 }
 function cleanAllest(a, cur = {}) {
@@ -99,6 +108,7 @@ export function applyPortalEdit(E, body, now) {
   const denied = [];
   if (body.menu !== undefined) { if (locks.menu) denied.push('menù'); else set('menu', cleanMenu(body.menu, E.menu || {}), 'menù'); }
   if (body.allest !== undefined) { if (locks.allest) denied.push('allestimenti'); else set('allest', cleanAllest(body.allest, E.allest || {}), 'allestimenti'); }
+  if (body.prova !== undefined) { if (locks.menu) denied.push('prova menù'); else set('prova', cleanProva(body.prova, E.prova || {}), 'prova menù'); }
   if (body.guests !== undefined || body.tables !== undefined) {
     if (locks.guests) denied.push('invitati e tavoli');
     else { const g = cleanGuests(body.guests, E.guests || []); set('guests', g, 'invitati'); set('tables', seatTables(E.tables || [], body.tables, g), 'disposizione ai tavoli'); }

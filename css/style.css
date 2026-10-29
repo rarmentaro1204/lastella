@@ -217,6 +217,7 @@ table.tb { width: 100%; border-collapse: collapse; background: #fff; border: 1px
 .rcp > summary::before { content: '▸'; color: var(--sand); transition: transform .12s; } .rcp[open] > summary::before { transform: rotate(90deg); }
 .rcp .rn { font-weight: 700; flex: 1; min-width: 0; } .rcp .rn small { display: block; font-weight: 400; color: var(--muted); font-size: 12px; }
 .rcp .body { padding: 4px 16px 16px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; border-top: 1px solid #eee8e0; }
+.rcp .body.rsheet { grid-template-columns: repeat(3, minmax(0, 1fr)); } .rcp .body.rsheet table.ing td, .rcp .body.rsheet table.ing th { padding: 4px 6px; } .rcp .body.rsheet tr.ok td { color: var(--muted); }
 .rcp .body h4 { font-size: 14px; margin: 14px 0 8px; display: flex; gap: 8px; align-items: center; }
 .ck { display: flex; align-items: center; gap: 8px; padding: 5px 0; border-bottom: 1px dashed #eee8e0; font-size: 13.5px; }
 .ck.ok span.t { text-decoration: line-through; color: var(--muted); }
@@ -308,3 +309,5 @@ button.cal-c { cursor: pointer; } button.cal-c:hover:not(:disabled) { border-col
 .stepper button { border: 0; background: var(--sand-3); width: 30px; height: 30px; font-size: 17px; cursor: pointer; color: var(--navy); } .stepper button:hover { background: var(--sand-2); }
 select.asg { width: auto; padding: 4px 6px; font-size: 12.5px; max-width: 190px; }
 .printonly { display: none; } @media print { .printonly { display: inline-flex; } }
+table.ing input.q { width: 76px; display: inline-block; padding: 4px 6px; } table.ing input.u { width: 52px; display: inline-block; padding: 4px 6px; }
+table.ing td.num { white-space: nowrap; }
