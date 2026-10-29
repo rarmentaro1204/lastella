@@ -29,6 +29,7 @@ function summaryBlocks(E) {
   out.push(['Dessert e lounge', ds]);
   const al = [];
   C.allestimenti.forEach(g => g.voci.forEach(v => { if (!v.opts) return; const st = E.allest[v.id] || {}, o = v.opts.find(x => x.id === st.opt); if (o) al.push([v.nome, o.nome + (st.testo ? ` (${st.testo})` : '') + (st.ok ? ' ✓' : '')]); }));
+  if (E.custom && E.custom.attivo) out.push(['Menù personalizzato' + (E.custom.titolo ? ' · ' + E.custom.titolo : ''), (E.custom.sezioni || []).map(sz => [sz.nome || 'Portata', (sz.items || []).map(rname).join(' / ')])]);
   out.push(['Allestimenti', al]);
   const ad = S.settings.addons.filter(a => (E.addons[a.id] || {}).on && !a.link).map(a => { const v = addonVariant(a, E.addons[a.id]); return [a.nome, v ? v.nome.split(' · ')[0] : '']; });
   out.push(['Add-on', ad]);
@@ -180,7 +181,7 @@ ACTIONS['rc-open'] = el => { const E = curEvent(); recipeList(E).forEach(x => el
 
 function ckList(rid, kind, arr, porz, withQty) {
   return arr.map((it, i) => `<div class="ck ${it.ok ? 'ok' : ''}"><input type="checkbox" data-b="recipes.${rid}.${kind}.${i}.ok" data-r ${it.ok ? 'checked' : ''}><span class="t" style="flex:1">${esc(it.n)}</span>
-    ${withQty ? `<input class="q" type="number" step="any" title="Quantità per porzione" placeholder="q.tà" data-b="recipes.${rid}.${kind}.${i}.q" data-r value="${it.q}"><input class="u" type="text" data-b="recipes.${rid}.${kind}.${i}.u" value="${esc(it.u)}"><span class="tot">${it.q !== '' ? num(Math.round(it.q * porz * 100) / 100) + ' ' + esc(it.u) : ''}</span>` : ''}
+    ${withQty ? `<input class="q" type="number" step="any" title="Quantità per porzione" placeholder="q.tà" data-b="recipes.${rid}.${kind}.${i}.q" data-r value="${it.q}"><input class="u" type="text" data-b="recipes.${rid}.${kind}.${i}.u" value="${esc(it.u)}"><input class="q" style="width:54px" type="number" step="any" min="0" max="99" title="Scarto %" placeholder="scarto%" data-b="recipes.${rid}.${kind}.${i}.s" data-r value="${it.s || ''}"><span class="tot">${it.q !== '' ? num(Math.round(it.q * porz * 100) / 100) + ' ' + esc(it.u) + (+it.s ? `<br><small>da acquistare ${num(Math.round(it.q * porz / (1 - it.s / 100) * 100) / 100)} ${esc(it.u)}</small>` : '') : ''}</span>` : ''}
     <button class="x" data-act="rc-del" data-rid="${rid}" data-kind="${kind}" data-i="${i}" title="Rimuovi">✕</button></div>`).join('')
     + `<div class="addrow"><input type="text" placeholder="＋ aggiungi…" data-rid="${rid}" data-kind="${kind}" style="flex:1"><button class="btn sm alt" data-act="rc-add" data-rid="${rid}" data-kind="${kind}">Aggiungi</button></div>`;
 }
@@ -205,14 +206,15 @@ ACTIONS['rc-reset'] = el => { if (!confirm('Ripristinare la bozza originale? Spu
 
 function shoppingList(E, items) {
   const map = new Map();
-  items.forEach(x => { const st = E.recipes[x.r.id], porz = portionsOf(E, st); st.ing.forEach((it, i) => { const k = norm(it.n); if (!map.has(k)) map.set(k, { n: it.n, rows: [] }); map.get(k).rows.push({ rid: x.r.id, rn: x.r.name, i, ok: it.ok, q: it.q, u: it.u, porz }); }); });
+  items.forEach(x => { const st = E.recipes[x.r.id], porz = portionsOf(E, st); st.ing.forEach((it, i) => { const k = norm(it.n); if (!map.has(k)) map.set(k, { n: it.n, rows: [] }); map.get(k).rows.push({ rid: x.r.id, rn: x.r.name, i, ok: it.ok, q: it.q, u: it.u, s: +it.s || 0, porz }); }); });
   const rows = [...map.values()].sort((a, b) => a.n.localeCompare(b.n, 'it'));
   const q = norm(UI.rcpQ);
   return `<div class="alert info noprint" style="margin-bottom:12px">Elenco unico delle materie prime di tutte le ricette scelte. Le quantità si sommano quando le unità coincidono. Spuntare qui segna l'ingrediente come acquistato in tutte le ricette.</div>
-  <table class="tb"><thead><tr><th style="width:44px"></th><th>Materia prima</th><th class="num">Quantità totale</th><th>Usata in</th><th class="num">Acquistata</th></tr></thead><tbody>
+  <table class="tb"><thead><tr><th style="width:44px"></th><th>Materia prima</th><th class="num">Quantità (netta / da acquistare)</th><th>Usata in</th><th class="num">Acquistata</th></tr></thead><tbody>
   ${rows.filter(r => !q || norm(r.n).includes(q)).map(r => {
     const units = new Set(r.rows.filter(x => x.q !== '').map(x => x.u)), all = r.rows.every(x => x.ok), n = r.rows.filter(x => x.ok).length;
-    const tot = r.rows.some(x => x.q !== '') && units.size === 1 ? num(Math.round(r.rows.reduce((a, x) => a + (+x.q || 0) * x.porz, 0) * 100) / 100) + ' ' + [...units][0] : '—';
+    const net = r.rows.reduce((a, x) => a + (+x.q || 0) * x.porz, 0), buy = r.rows.reduce((a, x) => a + (+x.q || 0) * x.porz / (1 - x.s / 100), 0), u0 = [...units][0];
+    const tot = r.rows.some(x => x.q !== '') && units.size === 1 ? num(Math.round(net * 100) / 100) + ' ' + u0 + (buy - net > 0.005 ? `<div class="small muted">da acquistare ${num(Math.round(buy * 100) / 100)} ${esc(u0)}</div>` : '') : '—';
     return `<tr><td><input type="checkbox" ${all ? 'checked' : ''} data-act="shop-toggle" data-n="${esc(norm(r.n))}"></td><td class="${all ? 'muted' : ''}" style="${all ? 'text-decoration:line-through' : ''}"><b>${esc(r.n)}</b></td><td class="num">${tot}</td>
       <td class="small muted">${r.rows.length === 1 ? esc(r.rows[0].rn) : r.rows.length + ' ricette'}</td><td class="num"><span class="pill ${all ? 'ok' : n ? 'warn' : ''}">${n}/${r.rows.length}</span></td></tr>`; }).join('')}</tbody></table>`;
 }

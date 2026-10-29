@@ -24,7 +24,7 @@ function checkPw(password, u) { const h = scryptSync(password, u.salt, 64); cons
 const publicUser = u => ({ email: u.email, role: u.role, approved: !!u.approved, created: u.created });
 
 /* file dell'app serviti solo dopo il login, nell'ordine di caricamento */
-const BUNDLE = ['catalog.js', 'store.js', 'app.js', 'sync.js', 'seatplan.js', 'views-evento.js', 'views-menu.js', 'views-econ.js', 'views-home.js', 'views-portale.js', 'views-servizio.js'];
+const BUNDLE = ['catalog.js', 'store.js', 'app.js', 'sync.js', 'seatplan.js', 'views-evento.js', 'views-menu.js', 'views-prova.js', 'views-econ.js', 'views-home.js', 'views-portale.js', 'views-servizio.js'];
 const PRIVATE_ASSETS = ['demo-seed.js'];
 const raw = (text, status = 200) => new Response(text, { status, headers: { 'content-type': 'application/javascript; charset=utf-8', 'cache-control': 'private, no-store', 'x-content-type-options': 'nosniff' } });
 

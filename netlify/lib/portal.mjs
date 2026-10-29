@@ -38,7 +38,7 @@ export function portalView(E, settings, engine) {
   return {
     id: E.id,
     q: pick(q, ['sposo1', 'sposo2', 'data', 'locationNome', 'tipo', 'pasto', 'rito', 'adulti', 'bambini', 'neonati', 'staff', 'scadenzaMenu', 'scadenzaAllest']),
-    menu: E.menu || {}, allest: E.allest || {}, guests: E.guests || [], tables: E.tables || [],
+    menu: E.menu || {}, allest: E.allest || {}, guests: (E.guests || []).map(({ mods, ...g }) => g), tables: E.tables || [],
     special: (E.special || []).filter(s => s.da === 'cliente').map(s => ({ id: s.id, kind: s.kind, titolo: s.titolo, descr: s.descr, sezione: s.sezione, stato: s.stato })),
     economics: engine ? engine.economics(E, settings) : null,
     catalog: portalCatalog(settings, E.q && E.q.data ? +E.q.data.slice(0, 4) : new Date().getFullYear()),
@@ -71,7 +71,7 @@ function cleanGuests(arr, cur = []) {
   return arr.slice(0, 400).map(g => {
     if (!g || typeof g !== 'object') return null;
     let id = ID_OK.test(g.id || '') ? g.id : randomBytes(6).toString('base64url'); while (seen.has(id)) id = randomBytes(6).toString('base64url'); seen.add(id);
-    return { id, nome: str(g.nome, 60), cognome: str(g.cognome, 60), fascia: FASCE.includes(g.fascia) ? g.fascia : 'Adulto', dieta: str(g.dieta, 30), allergie: strArr(g.allergie, 20, 30), intolleranze: strArr(g.intolleranze, 20, 30), altro: str(g.altro, 120), note: str(g.note, 200), seggiolone: !!g.seggiolone };
+    return { id, mods: (cur.find(c => c.id === id) || {}).mods || [], nome: str(g.nome, 60), cognome: str(g.cognome, 60), fascia: FASCE.includes(g.fascia) ? g.fascia : 'Adulto', dieta: str(g.dieta, 30), allergie: strArr(g.allergie, 20, 30), intolleranze: strArr(g.intolleranze, 20, 30), altro: str(g.altro, 120), note: str(g.note, 200), seggiolone: !!g.seggiolone };
   }).filter(g => g && (g.nome || g.cognome));
 }
 /* il cliente non cambia i tavoli (numero, forma, posti, posizione): può solo scegliere chi siede dove */

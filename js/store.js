@@ -14,7 +14,7 @@ function defaultSettings() {
   const y = new Date().getFullYear();
   return {
     iva: 10, bambinoPrezzo: 80, neonatoPrezzo: 0, staffPrezzo: 0, supplementiSu: 'adulti',
-    listini: clone(CAT.listiniSeed), locations: clone(CAT.locationsSeed), addons: seedAddons(),
+    customMenus: [], listini: clone(CAT.listiniSeed), locations: clone(CAT.locationsSeed), addons: seedAddons(),
     catalogs: { [y]: seedCatalog(), [y + 1]: seedCatalog() }, scadenziario: clone(CAT.scadenziarioSeed), prezzi: {},
   };
 }
@@ -45,6 +45,9 @@ function newEvent() {
       formula: '3a', pre: [], entree: [], primi: [], secondi: [], formaggi: false,
       bianco: '', rosso: '', extraVini: [], dessert: '', lounge: [], caffeAlt: '', noteMenu: '',
     },
+    prova: { data: '', ora: '', persone: 2, antipasti: [], entree: [], primi: [], secondi: [], vini: [], note: '' },
+    custom: { attivo: false, sostituisce: false, titolo: '', prezzo: '', sezioni: [], note: '' },
+    servizio: { steps: {} },
     allest: {}, addons: {}, special: [], recipes: {}, econ: { rettifiche: [], note: '' }, pagamenti: [], pagAuto: true,
     consegne: {
       bussola: [], numeriOk: false, allergieOk: false, tavoliOk: false, disposizioneOk: false, seggiolini: '', attrezzatura: '', extratime: '', orientamento: '', sposiLato: 'Committente 1 a sinistra, committente 2 a destra',
@@ -93,7 +96,7 @@ function pset(obj, path, val) {
 /* ---- invitati ---- */
 const fullName = g => `${g.nome || ''} ${g.cognome || ''}`.trim();
 const initials = g => ((g.nome || '?')[0] + ((g.cognome || '')[0] || '')).toUpperCase();
-function newGuest(p = {}) { return Object.assign({ id: uid(), nome: '', cognome: '', fascia: 'Adulto', dieta: '', allergie: [], intolleranze: [], altro: '', note: '', seggiolone: false }, p); }
+function newGuest(p = {}) { return Object.assign({ id: uid(), nome: '', cognome: '', fascia: 'Adulto', dieta: '', allergie: [], intolleranze: [], altro: '', note: '', seggiolone: false, mods: [] }, p); }
 function guestFlags(g) { return { all: g.allergie.length || (g.altro ? 1 : 0), int: g.intolleranze.length, dieta: g.dieta ? 1 : 0 }; }
 function hasSpecial(g) { return g.allergie.length || g.intolleranze.length || g.dieta || g.altro || g.note; }
 function guestCounts(E) {
@@ -327,9 +330,10 @@ function computeQuote(E) {
   const lines = [], warnings = [], infos = [];
   const add = (sec, label, qty, unit, tot, extra = {}) => lines.push(Object.assign({ sec, label, qty, unit, tot }, extra));
 
-  // 1. proposta Diamante — regole del contratto (Allegato A)
-  const min = L.minAdulti;
-  if (ad >= min) {
+  // 1. proposta Diamante — regole del contratto (Allegato A); con un menù personalizzato «sostitutivo» (aziende) non si applica
+  const solo = !!(E.custom && E.custom.attivo && E.custom.sostituisce), min = L.minAdulti;
+  if (solo) { /* prezzo a persona del menù personalizzato, più sotto */ }
+  else if (ad >= min) {
     add('Proposta Diamante', `Proposta Diamante · primi ${min} ospiti adulti (${g === 'sabato' ? 'sabato' : 'da domenica a venerdì'})`, min, P, min * P);
     if (ad > min) {
       const disc = cocktail ? L.scontoOltre : 0;
@@ -341,9 +345,9 @@ function computeQuote(E) {
     add('Proposta Diamante', `Proposta Diamante · ${eff} ospiti adulti (${min} × ${eur(P)} meno € ${L.scontoMancante} per ogni ospite sotto i ${min})`, 1, tot, tot);
     if (ad < L.minGarantito) warnings.push(`Adulti (${ad}) sotto il minimo garantito di ${L.minGarantito}: il preventivo è calcolato su ${L.minGarantito}.`);
   }
-  if (ch) { const cp = +S.settings.bambinoPrezzo || 0; add('Proposta Diamante', 'Bambini', ch, cp, ch * cp); if (!cp) warnings.push('Prezzo bambini non impostato (Impostazioni).'); }
-  if (ne && S.settings.neonatoPrezzo) add('Proposta Diamante', 'Neonati', ne, +S.settings.neonatoPrezzo, ne * S.settings.neonatoPrezzo);
-  if (st) { const sp = +S.settings.staffPrezzo || 0; add('Proposta Diamante', 'Pasto staff / fornitori', st, sp, st * sp); if (!sp) warnings.push('Costo del pasto staff non impostato (Impostazioni): lo staff è a € 0.'); }
+  if (ch && !solo) { const cp = +S.settings.bambinoPrezzo || 0; add('Proposta Diamante', 'Bambini', ch, cp, ch * cp); if (!cp) warnings.push('Prezzo bambini non impostato (Impostazioni).'); }
+  if (ne && S.settings.neonatoPrezzo && !solo) add('Proposta Diamante', 'Neonati', ne, +S.settings.neonatoPrezzo, ne * S.settings.neonatoPrezzo);
+  if (st && !solo) { const sp = +S.settings.staffPrezzo || 0; add('Proposta Diamante', 'Pasto staff / fornitori', st, sp, st * sp); if (!sp) warnings.push('Costo del pasto staff non impostato (Impostazioni): lo staff è a € 0.'); }
 
   // 2. supplementi allestimenti
   const persSup = S.settings.supplementiSu === 'tutti' ? ad + ch : ad;
@@ -379,6 +383,12 @@ function computeQuote(E) {
     add('Richieste speciali', `${s.tipo}: ${s.titolo || '(senza titolo)'}${s.stato === 'Da valutare' ? ' (da valutare)' : ''}`, Number(s.porzioni) || 1, Number(s.porzioni) ? (Number(s.prezzoUnit) || 0) : tot, tot);
     if (s.stato === 'Da valutare') warnings.push(`Richiesta speciale «${s.titolo || s.tipo}» ancora da valutare/quotare.`);
   });
+  // 4b. menù personalizzato (aziende): prezzo a persona
+  { const cu = E.custom; if (cu && cu.attivo) {
+      const pp = Number(cu.prezzo) || 0, pers = solo ? ad + ch + (st || 0) : ad;
+      if (pp) add('Menù personalizzato', `${cu.titolo || 'Menù personalizzato'} · a persona`, pers, pp, pers * pp);
+      else warnings.push('Menù personalizzato attivo senza prezzo a persona (Menù → Menù personalizzato).');
+  } }
   // 5. rettifiche
   (E.econ.rettifiche || []).forEach(r => { if (Number(r.importo)) add('Rettifiche', r.desc || 'Rettifica', 1, Number(r.importo), Number(r.importo)); });
 
@@ -452,6 +462,9 @@ function selectedRecipes(E) {
     push('Lounge bar · Servizi', gen('lo-amari', 'Amari di erbe, fiori e radici', ['Selezione amari di produzione artigianale'], ['Selezione e servizio']));
     push('Lounge bar · Servizi', gen('lo-vermouth', 'Vermouth corner', ['Vermouth bianco', 'Vermouth rosso'], ['Selezione e servizio']));
   }
+  { const pv = E.prova || {}, pr = (sec, ids) => (ids || []).forEach(id => { const r = IDX[id]; if (r) push('Prova menù · ' + sec, Object.assign({}, r, { id: 'pv-' + r.id, name: 'Prova · ' + r.name, kid: false, prova: true })); });
+    pr('Antipasti', pv.antipasti); pr('Entrée', pv.entree); pr('Primi', pv.primi); pr('Secondi', pv.secondi); }
+  if (E.custom && E.custom.attivo) (E.custom.sezioni || []).forEach(sz => (sz.items || []).forEach(id => { const r = IDX[id]; if (r) push('Menù personalizzato · ' + (sz.nome || 'Portata'), Object.assign({}, r, { id: 'cm-' + r.id, name: r.name })); }));
   S.settings.addons.forEach(a => {
     const sx = addonState(E, a); if (!sx.on) return;
     const v = addonVariant(a, sx);
@@ -462,11 +475,22 @@ function selectedRecipes(E) {
   return out;
 }
 
+/* una materia prima del catalogo: «Nome» oppure «Nome | quantità per persona | unità | scarto %» (es. «Farina 00 | 30 | g | 5») */
+function parseIng(line) {
+  const p = String(line).split('|').map(x => x.trim()), num = v => { const n = Number(String(v).replace(',', '.').replace('%', '')); return Number.isFinite(n) ? n : NaN; };
+  let q = '', u = 'g', s = 0, k = 2;                       // k = posizione del campo successivo
+  if (p[1] !== undefined && p[1] !== '') { const m = p[1].match(/^([\d.,]+)\s*([^\d\s].*)?$/); if (m) { q = num(m[1]); if (m[2]) u = m[2]; else if (p[2] && isNaN(num(p[2]))) { u = p[2]; k = 3; } } }
+  if (p[k] !== undefined && p[k] !== '') { const n = num(p[k]); if (n >= 0 && n < 100) s = n; }
+  return { n: p[0] || '', q: Number.isFinite(q) ? q : '', u, s };
+}
+const ingLabel = line => { const i = parseIng(line); return i.n + (i.q !== '' ? ` — ${i.q} ${i.u} a persona` : '') + (i.s ? ` (scarto ${i.s}%)` : ''); };
 function recipeState(E, r) {
   let st = E.recipes[r.id];
   if (!st) {
-    st = E.recipes[r.id] = { kid: !!r.kid, porz: null, ing: r.ing.map(n => ({ n, q: '', u: 'g', ok: false })), semi: r.semi.map(n => ({ n, ok: false })), asm: r.asm.map(n => ({ n, ok: false })), note: '' };
+    st = E.recipes[r.id] = { kid: !!r.kid, porz: r.prova ? (Number(E.prova && E.prova.persone) || 2) : null, ing: r.ing.map(l => { const i = parseIng(l); return { n: i.n, q: i.q, u: i.u, s: i.s, ok: false }; }), semi: r.semi.map(n => ({ n, ok: false })), asm: r.asm.map(n => ({ n, ok: false })), note: '' };
   }
+  const cat = new Map(r.ing.map(l => { const i = parseIng(l); return [i.n, i]; }));
+  st.ing.forEach(it => { const c = cat.get(it.n); if (c && it.q === '' && c.q !== '') { it.q = c.q; it.u = c.u; it.s = c.s; } });   // coefficienti aggiunti dopo nel catalogo
   return st;
 }
 const portionsOf = (E, st) => (st && st.porz != null && st.porz !== '') ? Number(st.porz) : (st && st.kid ? (+E.q.bambini || 0) : ((+E.q.adulti || 0) + (+E.q.bambini || 0)));

@@ -166,13 +166,13 @@ document.addEventListener('change', e => {
 });
 
 /* ---------------------------------------------------------------- CATALOGO MENÙ PER ANNO */
-const CAT_TABS = [['aperitivo', 'Aperitivo · isole'], ['tavola', 'A tavola'], ['dolci', 'Dolci e lounge'], ['bevande', 'Bevande'], ['allestimenti', 'Allestimenti']];
+const CAT_TABS = [['aperitivo', 'Aperitivo · isole'], ['tavola', 'A tavola'], ['dolci', 'Dolci e lounge'], ['bevande', 'Bevande'], ['allestimenti', 'Allestimenti'], ['aziende', 'Menù aziende']];
 function recEditor(base, arr, i, r, noActions) {
   const path = `${base}.${i}`;
   return `<details class="cedit" data-k="${path}" ${UI.open.has(path) ? 'open' : ''}><summary><span style="flex:1">${esc(r.name)}${tagHtml(r)}</span>${noActions ? '' : `<button class="btn ghost sm" data-act="cat-move" data-path="${base}" data-i="${i}" data-d="-1" title="Su">↑</button><button class="btn ghost sm" data-act="cat-move" data-path="${base}" data-i="${i}" data-d="1" title="Giù">↓</button>${delBtn(base, i)}`}</summary>
     <div class="fields" style="margin-top:12px">${tin('Nome del piatto', `${path}.name`, r.name, { w2: 1 })}${tin('Etichette (vegano, vegetariano…)', `${path}.tags`, (r.tags || []).join(', '), { ph: 'separate da virgola' }).replace('data-s data-b', 'data-csv data-s data-b')}
       <div class="field wide"><label>Descrizione (come appare nel menù)</label><input type="text" ${sb(`${path}.desc`)} value="${esc(r.desc || '')}"></div></div>
-    <div class="grid g3" style="margin-top:8px">${tarea('Materie prime (una per riga)', `${path}.ing`, r.ing)}${tarea('Semilavorati (una per riga)', `${path}.semi`, r.semi)}${tarea('Composizione del piatto (una per riga)', `${path}.asm`, r.asm)}</div>
+    <div class="grid g3" style="margin-top:8px">${tarea('Materie prime (una per riga: Nome | quantità a persona | unità | scarto %)', `${path}.ing`, r.ing)}${tarea('Semilavorati (una per riga)', `${path}.semi`, r.semi)}${tarea('Composizione del piatto (una per riga)', `${path}.asm`, r.asm)}</div>
     <div style="margin-top:8px">${tarea('Procedimento e note di cucina (visibili allo staff nel ricettario)', `${path}.proc`, r.proc || '', 'text', { wide: 1 })}</div></details>`;
 }
 const recList = (base, arr) => (arr || []).map((r, i) => recEditor(base, arr, i, r)).join('') + `<div style="margin-top:8px">${addBtn(base, 'recipe', '＋ Aggiungi piatto')}</div>`;
@@ -204,6 +204,9 @@ function viewCatalog() {
     <h3 style="margin:22px 0 10px">Torta da taglio (sempre inclusa)</h3>${recEditor(b, null, 'torta', C.torta, true)}
     <h3 style="margin:22px 0 10px">Lounge bar · dolci e piccola pasticceria</h3>${recList(`${b}.lounge.dolci`, C.lounge.dolci)}
     <div class="grid g3" style="margin-top:16px"><div class="card">${tarea('Brindisi', `${b}.brindisi`, C.brindisi, 'text')}</div><div class="card">${tarea('Amari', `${b}.lounge.amari`, C.lounge.amari, 'text')}</div><div class="card">${tarea('Vermouth corner', `${b}.lounge.vermouth`, C.lounge.vermouth, 'text')}</div></div>`;
+  else if (tab === 'aziende') body = `<div class="row" style="margin-bottom:10px"><h3>Menù per aziende</h3><span class="right"><button class="btn sm" data-act="cm-lib-add">＋ Nuovo menù</button></span></div>
+    <p class="hint" style="margin-bottom:10px">Modelli di menù personalizzati, costruiti richiamando le ricette del catalogo ${y}. In un evento: Menù → Menù personalizzato → «Parti da un modello».</p>
+    ${(S.settings.customMenus || []).map((m, i) => `<div class="card" style="margin-bottom:12px"><div class="row"><h4 style="flex:1">${esc(m.nome || 'Senza nome')}</h4><button class="btn ghost sm" data-act="cm-lib-del" data-i="${i}">Elimina</button></div>${cmEditor(C, 'l:' + i, m)}</div>`).join('') || '<div class="empty">Nessun modello: creane uno o salvalo da un evento.</div>'}`;
   else if (tab === 'bevande') body = `<h3 style="margin-bottom:10px">Buvette d'aperitivo</h3><div class="card">${tin('Bollicina inclusa', `${b}.buvette.bollicina`, C.buvette.bollicina)}</div>
     <div class="grid g3" style="margin-top:12px">${strList(`${b}.buvette.cocktail`, C.buvette.cocktail, 'Cocktail d\'aperitivo (uno a scelta)')}${strList(`${b}.buvette.succhi`, C.buvette.succhi, 'Succhi di frutta')}${strList(`${b}.buvette.fissi`, C.buvette.fissi || [], 'Sempre inclusi (analcolici, acqua)')}</div>
     <h4 style="margin:16px 0 8px">Personalizzazioni buvette (quotazione separata)</h4><div class="grid g4">${Object.keys(C.buvette.extra).map(g => strList(`${b}.buvette.extra.${g}`, C.buvette.extra[g], g)).join('')}</div>
@@ -349,9 +352,9 @@ function viewRicettarioLib() {
   const years = [...new Set([cur, cur + 1, ...Object.keys(S.settings.catalogs).map(Number)])].sort();
   const groups = rlibGroups(C), top = [...new Set(groups.map(([n]) => n.split(' · ')[0]))];
   const body = groups.filter(([n]) => !RL.sec || n.split(' · ')[0] === RL.sec).map(([n, arr]) => {
-    const f = arr.filter(r => !q || norm(r.name + ' ' + (r.desc || '') + ' ' + (r.ing || []).join(' ')).includes(q)); if (!f.length) return '';
+    const f = arr.filter(r => !q || norm(r.name + ' ' + (r.desc || '') + ' ' + (r.ing || []).map(x => parseIng(x).n).join(' ')).includes(q)); if (!f.length) return '';
     return `<div class="secbar"><h3>${esc(n)}</h3><span class="muted small">${f.length} ricette</span></div>${f.map(r => `<details class="rcp"><summary><div class="rn">${esc(r.name)}${tagHtml(r)}<small>${esc(r.desc || '')}</small></div></summary>
-      <div class="body"><div><h4>🛒 Materia prima</h4><ul class="small">${(r.ing || []).map(x => `<li>${esc(x)}</li>`).join('') || '<li class="muted">—</li>'}</ul></div><div><h4>🥣 Semilavorati</h4><ul class="small">${(r.semi || []).map(x => `<li>${esc(x)}</li>`).join('') || '<li class="muted">—</li>'}</ul></div><div><h4>🍽 Composizione</h4><ul class="small">${(r.asm || []).map(x => `<li>${esc(x)}</li>`).join('') || '<li class="muted">—</li>'}</ul></div>
+      <div class="body"><div><h4>🛒 Materia prima</h4><ul class="small">${(r.ing || []).map(x => `<li>${esc(ingLabel(x))}</li>`).join('') || '<li class="muted">—</li>'}</ul></div><div><h4>🥣 Semilavorati</h4><ul class="small">${(r.semi || []).map(x => `<li>${esc(x)}</li>`).join('') || '<li class="muted">—</li>'}</ul></div><div><h4>🍽 Composizione</h4><ul class="small">${(r.asm || []).map(x => `<li>${esc(x)}</li>`).join('') || '<li class="muted">—</li>'}</ul></div>
       <div style="grid-column:1/-1"><h4>👨‍🍳 Procedimento</h4><div class="small" style="white-space:pre-wrap">${r.proc ? esc(r.proc) : '<span class="muted">Nessun procedimento inserito.</span>'}</div></div></div></details>`).join('')}`;
   }).join('');
   return `<div class="secthead"><div><h1>Libreria ricette</h1><p>Tutte le ricette del menù ${y}: ingredienti, semilavorati, composizione e procedimento. ${AUTH.cucina ? '' : 'Per modificarle o aggiungere il procedimento vai in <a href="#/catalog/' + y + '/aperitivo">Catalogo menù</a>.'}</p></div><button class="btn alt noprint" onclick="window.print()">Stampa</button></div>
@@ -371,3 +374,6 @@ function dataCard() {
       <li><b>Link clienti</b>: il cliente scrive solo nel proprio evento, mai negli altri.</li>
       <li><b>Backup</b>: scarica regolarmente il file JSON qui sotto, è la tua assicurazione.</li></ul>` : '<p class="muted small">Modalità locale: i dati sono solo nel browser di questo computer. Scarica il backup qui sotto.</p>'}</div>`;
 }
+
+ACTIONS['cm-lib-add'] = () => { (S.settings.customMenus = S.settings.customMenus || []).push({ id: uid(), nome: 'Nuovo menù aziende', prezzo: '', sezioni: [{ nome: 'Antipasto', items: [] }, { nome: 'Primo', items: [] }, { nome: 'Secondo', items: [] }, { nome: 'Dolce', items: [] }] }); save(); rr(); };
+ACTIONS['cm-lib-del'] = el => { if (!confirm('Eliminare il modello?')) return; S.settings.customMenus.splice(+el.dataset.i, 1); save(); rr(); };

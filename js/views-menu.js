@@ -3,7 +3,7 @@
    Tutto il catalogo (isole, piatti, bevande, allestimenti) arriva dal catalogo dell'anno dell'evento
    ===================================================================== */
 let C;   // catalogo dell'evento corrente, impostato all'ingresso di ogni vista
-VIEWS.menu = E => { C = catalogFor(E); return ({ aperitivo: viewAperitivo, tavola: viewTavola, dolci: viewDolci, speciali: viewSpeciali }[ROUTE.sub] || viewAperitivo)(E); };
+VIEWS.menu = E => { C = catalogFor(E); return ({ aperitivo: viewAperitivo, tavola: viewTavola, dolci: viewDolci, custom: viewCustom, prova: viewProva, speciali: viewSpeciali }[ROUTE.sub] || viewAperitivo)(E); };
 
 const tagHtml = r => (r.tags || []).filter(t => t !== 'vegetariano' || !(r.tags || []).includes('vegano')).map(t => `<span class="tag">${esc(t)}</span>`).join('');
 const OPT = (on, attr, title, desc, o = {}) => `<div class="opt ${on ? 'on' : ''} ${o.sq ? 'sq' : ''}" ${attr}><span class="mk"></span><div style="min-width:0"><div class="t">${esc(title)}${o.tags || ''}</div>${desc ? `<div class="d">${esc(desc)}</div>` : ''}</div>${o.price ? `<span class="pr">${o.price}</span>` : ''}</div>`;

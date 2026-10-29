@@ -11,7 +11,7 @@ const VIEWS = {};
 
 const SECS = [
   { k: 'evento', n: '01', t: 'Evento', subs: [['questionario', 'Questionario'], ['invitati', 'Invitati'], ['tavoli', 'Tavoli e mappa'], ['consegne', 'Consegne 15 gg'], ['portale', 'Accesso cliente']] },
-  { k: 'menu', n: '02', t: 'Menù', subs: [['aperitivo', 'Aperitivo'], ['tavola', 'A tavola'], ['dolci', 'Dolci e lounge'], ['speciali', 'Richieste speciali']] },
+  { k: 'menu', n: '02', t: 'Menù', subs: [['aperitivo', 'Aperitivo'], ['tavola', 'A tavola'], ['dolci', 'Dolci e lounge'], ['custom', 'Menù personalizzato'], ['prova', 'Prova menù'], ['speciali', 'Richieste speciali']] },
   { k: 'allestimento', n: '03', t: 'Allestimento' },
   { k: 'addon', n: '04', t: 'Add-on' },
   { k: 'economics', n: '05', t: 'Economics' },
